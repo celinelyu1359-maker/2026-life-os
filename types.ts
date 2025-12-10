@@ -60,4 +60,13 @@ export interface MonthlyGoal {
     id: string;
     text: string;
     completed: boolean;
+    monthIndex: number;
+}
+
+export interface WeeklyData {
+    weekNum: number;
+    tasks: ToDoItem[]; // 每周特有的任务
+    notes: NoteCard[]; // 每周特有的笔记
+    challenge: ChallengeItem[]; // 每周挑战
+    // 可以添加其他你需要的每周数据，例如 reflection, summary 等
 }

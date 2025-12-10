@@ -3,18 +3,25 @@ import { Plus, Square, CheckSquare, Trash2, CalendarClock, ArrowRight, PenLine, 
 import { getWeeksInMonth, formatNiceDate } from '../utils';
 import { NoteCard, MonthlyGoal, Language } from '../types';
 
+// ✅ 1. 定义 localStorage 的 Key
+const MONTH_INDEX_KEY = 'monthly-notebook-index-2026';
+const GOALS_KEY = 'monthly-goals-2026';
+
+// ✅ 2. 定义默认数据 (防止空状态)
+const defaultGoals: MonthlyGoal[] = [];
+
 interface MonthlyNotebookProps {
     navigateToWeek: (weekNum: number) => void;
-    currentMonthIndex: number; // 0-11
-    setCurrentMonthIndex: (idx: number) => void;
-    notes: NoteCard[];
+    language: Language;
+    notes: NoteCard[]; // ✅ Receive notes from App
     onEditNote: (note: NoteCard) => void;
+    currentMonthIndex: number;
+    setCurrentMonthIndex: (index: number) => void;
     goals: MonthlyGoal[];
     onAddGoal: (text: string) => void;
     onToggleGoal: (id: string) => void;
     onDeleteGoal: (id: string) => void;
     onDeferGoal: (id: string) => void;
-    language: Language;
 }
 
 const monthsEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -22,22 +29,60 @@ const monthsZh = ['一月', '二月', '三月', '四月', '五月', '六月', '�
 
 const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({ 
     navigateToWeek, 
-    currentMonthIndex, 
-    setCurrentMonthIndex,
+    language,
     notes,
     onEditNote,
+    currentMonthIndex,
+    setCurrentMonthIndex,
     goals,
     onAddGoal,
     onToggleGoal,
     onDeleteGoal,
-    onDeferGoal,
-    language
+    onDeferGoal
 }) => {
+  // --- State Management ---
+  
+  // 1️⃣ 状态定义：使用默认值初始化
+  const [localGoals, setLocalGoals] = useState<MonthlyGoal[]>(defaultGoals);
+  
+  // 2️⃣ 安全锁
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // 其他 UI 状态
   const [weeks, setWeeks] = useState<{weekNum: number, range: string}[]>([]);
   const [newGoalText, setNewGoalText] = useState('');
   const [isAddingGoal, setIsAddingGoal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // --- LocalStorage Logic ---
+
+  // 3️⃣ 挂载时读取数据
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedGoals = window.localStorage.getItem(GOALS_KEY);
+
+        if (savedGoals) setLocalGoals(JSON.parse(savedGoals));
+
+      } catch (e) {
+        console.error('Failed to load notebook data', e);
+      } finally {
+        setIsLoaded(true); // 打开安全锁
+      }
+    }
+  }, []);
+
+  // 4️⃣ 监听变化并自动保存
+  
+  // 保存目标
+  useEffect(() => {
+    if (isLoaded) {
+        window.localStorage.setItem(GOALS_KEY, JSON.stringify(localGoals));
+    }
+  }, [localGoals, isLoaded]);
+
+  // --- Internal Logic ---
 
   // Generate weeks when month changes
   useEffect(() => {
@@ -54,16 +99,7 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
       }
   }, [currentMonthIndex]);
 
-  // Filter notes for current month and search term
-  const currentMonthNotes = notes.filter(n => {
-      const d = new Date(n.date);
-      const isCurrentMonth = d.getMonth() === currentMonthIndex && d.getFullYear() === 2026;
-      if (!isCurrentMonth) return false;
-      
-      if (!searchTerm) return true;
-      const term = searchTerm.toLowerCase();
-      return n.title.toLowerCase().includes(term) || n.content.toLowerCase().includes(term);
-  });
+  // --- Action Handlers (Using Props) ---
 
   const handleAddGoal = () => {
       if(newGoalText.trim()) {
@@ -72,6 +108,36 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
           setIsAddingGoal(false);
       }
   };
+
+  const toggleGoal = (id: string) => {
+      onToggleGoal(id);
+  };
+
+  const deleteGoal = (id: string) => {
+      onDeleteGoal(id);
+  };
+
+  const deferGoal = (id: string) => {
+      onDeferGoal(id);
+  };
+
+  // --- Filtering Logic ---
+
+  // Filter notes for current month AND search term
+  const currentMonthNotes = notes.filter(n => {
+      const d = new Date(n.date);
+      // 注意：确保 n.date 是标准日期格式字符串
+      const isCurrentMonth = d.getMonth() === currentMonthIndex && d.getFullYear() === 2026;
+      if (!isCurrentMonth) return false;
+      
+      if (!searchTerm) return true;
+      const term = searchTerm.toLowerCase();
+      return n.title.toLowerCase().includes(term) || n.content.toLowerCase().includes(term);
+  });
+
+  // Filter goals for current month (Assuming goals might serve all months, or you filter them locally)
+  // ✅ Use goals from props (already filtered by month from App)
+  const displayGoals = goals;
 
   const months = language === 'en' ? monthsEn : monthsZh;
   const currentMonthName = months[currentMonthIndex];
@@ -103,7 +169,6 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
       >
         {months.map((m, idx) => {
             const isActive = currentMonthIndex === idx;
-            // Visual stacking logic: Active is high, others are lower
             return (
                 <button
                     key={m}
@@ -115,7 +180,7 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
                             : 'px-4 py-2 bg-[#E2E8F0] text-slate-500 hover:bg-[#CBD5E1] mt-2 z-0 flex items-center gap-1.5'}
                     `}
                     style={{
-                        transform: isActive ? 'translateY(1px)' : 'translateY(0)', // Overlap border
+                        transform: isActive ? 'translateY(1px)' : 'translateY(0)', 
                     }}
                 >
                     <span className={`uppercase tracking-wider text-[9px] opacity-50 ${isActive ? 'block mb-0.5' : ''}`}>
@@ -204,25 +269,25 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
                     </div>
 
                     <div className="space-y-1">
-                        {goals.length === 0 && !isAddingGoal && (
+                        {displayGoals.length === 0 && !isAddingGoal && (
                             <div className="py-4 text-center bg-white/50 border border-dashed border-slate-200 rounded-xl">
                                 <p className="text-slate-400 text-xs font-light italic">{t.noGoals}</p>
                             </div>
                         )}
                         
-                        {goals.map(goal => (
+                        {displayGoals.map(goal => (
                              <div key={goal.id} className="group flex items-start gap-2 py-1.5 border-b border-slate-100 last:border-0 hover:bg-white/50 px-2 rounded-lg transition-colors">
-                                <button onClick={() => onToggleGoal(goal.id)} className="mt-0.5 text-slate-400 hover:text-slate-900 transition-colors">
+                                <button onClick={() => toggleGoal(goal.id)} className="mt-0.5 text-slate-400 hover:text-slate-900 transition-colors">
                                     {goal.completed ? <CheckSquare size={16}/> : <Square size={16}/>}
                                 </button>
                                 <span className={`flex-1 text-sm font-light leading-relaxed ${goal.completed ? 'line-through text-slate-300' : 'text-slate-800'}`}>
                                     {goal.text}
                                 </span>
                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => onDeferGoal(goal.id)} className="p-1 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-full" title={t.defer}>
+                                    <button onClick={() => deferGoal(goal.id)} className="p-1 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-full" title={t.defer}>
                                         <CalendarClock size={12}/>
                                     </button>
-                                    <button onClick={() => onDeleteGoal(goal.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full">
+                                    <button onClick={() => deleteGoal(goal.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full">
                                         <Trash2 size={12}/>
                                     </button>
                                 </div>

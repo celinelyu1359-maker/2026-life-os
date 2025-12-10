@@ -1,19 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Book, Film, Star, Plus, X, Trash2, Search, Calendar } from 'lucide-react';
 import { ReadingItem, Language } from '../types';
+
+// ✅ LocalStorage Key
+const READING_ITEMS_KEY = 'reading-movies-items-2026';
+
+// ✅ Default data for first launch
+const defaultItems: ReadingItem[] = [
+    { id: '1', title: 'Design Emergency', type: 'book', rating: 5, tags: ['Design', 'Art'], review: 'A fantastic overview of modern design.', dateFinished: '2025-10-15' },
+    { id: '2', title: 'Visible Signs', type: 'book', rating: 4, tags: ['Philosophy'], review: 'Deep and thoughtful exploration of visual language.', dateFinished: '2025-11-01' },
+    { id: '3', title: 'Optic', type: 'movie', rating: 5, tags: ['Sci-Fi'], review: 'Visual stunner, cinematography was top notch.', dateFinished: '2025-09-20' },
+    { id: '4', title: 'The Creative Act', type: 'book', rating: 5, tags: ['Creativity'], review: 'Rick Rubin is a master. Essential reading.', dateFinished: '2025-08-10' },
+    { id: '5', title: 'A Sense of Place', type: 'book', rating: 3, tags: ['Travel'], review: 'Okay but a bit slow paced for my taste.', dateFinished: '2025-12-05' },
+];
 
 interface ReadingMoviesProps {
     language: Language;
 }
 
 const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language }) => {
-  const [items, setItems] = useState<ReadingItem[]>([
-      { id: '1', title: 'Design Emergency', type: 'book', rating: 5, tags: ['Design', 'Art'], review: 'A fantastic overview of modern design.', dateFinished: '2025-10-15' },
-      { id: '2', title: 'Visible Signs', type: 'book', rating: 4, tags: ['Philosophy'], review: 'Deep and thoughtful exploration of visual language.', dateFinished: '2025-11-01' },
-      { id: '3', title: 'Optic', type: 'movie', rating: 5, tags: ['Sci-Fi'], review: 'Visual stunner, cinematography was top notch.', dateFinished: '2025-09-20' },
-      { id: '4', title: 'The Creative Act', type: 'book', rating: 5, tags: ['Creativity'], review: 'Rick Rubin is a master. Essential reading.', dateFinished: '2025-08-10' },
-      { id: '5', title: 'A Sense of Place', type: 'book', rating: 3, tags: ['Travel'], review: 'Okay but a bit slow paced for my taste.', dateFinished: '2025-12-05' },
-  ]);
+  // ✅ State with default values
+  const [items, setItems] = useState<ReadingItem[]>(defaultItems);
+  const [isLoaded, setIsLoaded] = useState(false);
+  
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ReadingItem | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -21,6 +30,36 @@ const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language }) => {
   // Form State
   const [newItem, setNewItem] = useState<Partial<ReadingItem>>({ type: 'book', rating: 3, tags: [] });
   const [tempTag, setTempTag] = useState('');
+
+  // ✅ Load from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedItems = window.localStorage.getItem(READING_ITEMS_KEY);
+        if (savedItems) {
+          const parsed = JSON.parse(savedItems);
+          if (Array.isArray(parsed)) {
+            setItems(parsed);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load reading items from localStorage', e);
+      } finally {
+        setIsLoaded(true);
+      }
+    }
+  }, []);
+
+  // ✅ Save to localStorage when items change
+  useEffect(() => {
+    if (isLoaded) {
+      try {
+        window.localStorage.setItem(READING_ITEMS_KEY, JSON.stringify(items));
+      } catch (e) {
+        console.error('Failed to save reading items to localStorage', e);
+      }
+    }
+  }, [items, isLoaded]);
 
   // --- Logic ---
   const handleAddItem = () => {

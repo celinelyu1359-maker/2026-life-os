@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import AnnualSettings from './components/AnnualSettings';
@@ -6,71 +6,91 @@ import MonthlyNotebook from './components/MonthlyNotebook';
 import ReadingMovies from './components/ReadingMovies';
 import { View, NoteCard, ChallengeItem, MonthlyGoal, Language } from './types';
 import { X, Plus, Save } from 'lucide-react';
+// ✅ 关键导入：确保 utils 路径正确，且 getCurrentWeekNumber 在 utils.ts 中
+import { getCurrentWeekNumber } from './utils';
+
+// LocalStorage Keys (需要与 Dashboard.tsx 中使用的保持一致)
+const CURRENT_WEEK_KEY = 'current-week-num-2026';
+const NOTES_KEY = 'monthly-notes-2026'; // ✅ Shared with MonthlyNotebook
+const TARGET_YEAR = 2026; // 定义你的规划年份
+
+// ✅ Default notes data
+const defaultNotes: NoteCard[] = [
+    { id: '1', title: 'Example Note', date: '2026-01-01', content: 'Welcome to your Life OS', type: 'note'}
+];
+
+// ✅ 核心函数：决定 currentWeek 的初始值
+const getInitialWeek = (): number => {
+    // 1. 确保代码在浏览器环境中运行
+    if (typeof window === 'undefined') {
+        return 1; 
+    }
+    
+    // 2. 尝试从 LocalStorage 读取上次保存的周数
+    const savedWeek = window.localStorage.getItem(CURRENT_WEEK_KEY);
+    if (savedWeek !== null) {
+        const weekNum = Number(savedWeek);
+        // 如果读取到了一个有效的周数（1-52），就用它
+        if (!isNaN(weekNum) && weekNum >= 1 && weekNum <= 52) {
+            return weekNum;
+        }
+    }
+    
+    // 3. 如果 LocalStorage 没有记录或记录无效，则计算并返回当前自然周数
+    // 如果你在 2025 年运行，查看 2026 年的项目，这可能会返回 Week 1
+    return getCurrentWeekNumber(TARGET_YEAR);
+};
+
 
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [language, setLanguage] = useState<Language>('en');
   
   // Navigation State
-  const [currentWeek, setCurrentWeek] = useState(48);
+  // ✅ 修正点：使用 getInitialWeek() 确保初始周数正确加载
+  const [currentWeek, setCurrentWeek] = useState<number>(getInitialWeek());
   const [currentMonthIndex, setCurrentMonthIndex] = useState(0); // 0 = Jan
 
   // --- Data State (Lifted) ---
-  const [notes, setNotes] = useState<NoteCard[]>([
-      { id: '1', title: 'Example Note', date: '2026-01-01', content: 'Welcome to your Life OS', type: 'note'}
-  ]);
-
-  // Record<WeekNumber, Items[]>
-  const [weeklyChallenges, setWeeklyChallenges] = useState<Record<number, ChallengeItem[]>>({
-      48: [{ id: 'wc1', text: 'Complete project proposal', completed: false }]
-  });
+  const [notes, setNotes] = useState<NoteCard[]>(defaultNotes);
+  const [isLoaded, setIsLoaded] = useState(false); // ✅ Safety lock for localStorage
 
   // Record<MonthIndex, Items[]>
   const [monthlyGoalsData, setMonthlyGoalsData] = useState<Record<number, MonthlyGoal[]>>({
       0: [{ id: 'mg1', text: 'Finish 4 weekly reviews on time', completed: false }]
   });
 
-  // --- Logic for Weekly Challenges ---
-  const getCurrentChallenges = () => weeklyChallenges[currentWeek] || [];
+  // ✅ Load notes from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedNotes = window.localStorage.getItem(NOTES_KEY);
+        if (savedNotes) {
+          const parsed = JSON.parse(savedNotes);
+          if (Array.isArray(parsed)) {
+            setNotes(parsed);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load notes from localStorage', e);
+      } finally {
+        setIsLoaded(true);
+      }
+    }
+  }, []);
 
-  const handleAddChallenge = (text: string) => {
-      setWeeklyChallenges(prev => ({
-          ...prev,
-          [currentWeek]: [...(prev[currentWeek] || []), { id: Date.now().toString(), text, completed: false }]
-      }));
-  };
+  // ✅ Save notes to localStorage when they change
+  useEffect(() => {
+    if (isLoaded) {
+      try {
+        window.localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
+      } catch (e) {
+        console.error('Failed to save notes to localStorage', e);
+      }
+    }
+  }, [notes, isLoaded]);
 
-  const handleToggleChallenge = (id: string) => {
-      setWeeklyChallenges(prev => ({
-          ...prev,
-          [currentWeek]: prev[currentWeek]?.map(c => c.id === id ? {...c, completed: !c.completed} : c) || []
-      }));
-  };
-
-  const handleDeleteChallenge = (id: string) => {
-      setWeeklyChallenges(prev => ({
-          ...prev,
-          [currentWeek]: prev[currentWeek]?.filter(c => c.id !== id) || []
-      }));
-  };
-
-  const handleDeferChallenge = (id: string) => {
-      const itemToDefer = weeklyChallenges[currentWeek]?.find(c => c.id === id);
-      if(!itemToDefer) return;
-
-      setWeeklyChallenges(prev => {
-          const nextWeek = currentWeek + 1;
-          return {
-              ...prev,
-              [currentWeek]: prev[currentWeek].filter(c => c.id !== id),
-              [nextWeek]: [...(prev[nextWeek] || []), itemToDefer]
-          };
-      });
-      // Optionally notify user
-  };
-
-
-  // --- Logic for Monthly Goals ---
+  // --- Logic for Monthly Goals (保留，未修改) ---
   const getCurrentMonthlyGoals = () => monthlyGoalsData[currentMonthIndex] || [];
 
   const handleAddMonthlyGoal = (text: string) => {
@@ -100,7 +120,6 @@ const App: React.FC = () => {
 
       setMonthlyGoalsData(prev => {
           const nextMonth = currentMonthIndex + 1;
-          // Loop back to 0 if > 11? Or stop. Let's assume linear year.
           if(nextMonth > 11) return prev; 
           
           return {
@@ -111,7 +130,7 @@ const App: React.FC = () => {
       });
   };
 
-  // --- Modal State ---
+  // --- Modal State (保留，未修改) ---
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [editingNote, setEditingNote] = useState<NoteCard | null>(null);
 
@@ -152,11 +171,6 @@ const App: React.FC = () => {
         return <Dashboard 
             weekNumber={currentWeek} 
             setWeekNumber={setCurrentWeek} 
-            challenges={getCurrentChallenges()}
-            onAddChallenge={handleAddChallenge}
-            onToggleChallenge={handleToggleChallenge}
-            onDeleteChallenge={handleDeleteChallenge}
-            onDeferChallenge={handleDeferChallenge}
         />;
       case 'annual':
         return <AnnualSettings />;
@@ -180,11 +194,6 @@ const App: React.FC = () => {
         return <Dashboard 
             weekNumber={currentWeek} 
             setWeekNumber={setCurrentWeek} 
-            challenges={getCurrentChallenges()}
-            onAddChallenge={handleAddChallenge}
-            onToggleChallenge={handleToggleChallenge}
-            onDeleteChallenge={handleDeleteChallenge}
-            onDeferChallenge={handleDeferChallenge}
         />;
     }
   };
@@ -242,18 +251,20 @@ const App: React.FC = () => {
 const NoteModal: React.FC<{onClose: () => void, onSave: (n: NoteCard) => void, initialData: NoteCard | null, language: Language}> = ({ onClose, onSave, initialData, language }) => {
     const [title, setTitle] = useState(initialData?.title || (language === 'en' ? 'Quick Note' : '随手记'));
     const [content, setContent] = useState(initialData?.content || '');
+    const [noteDate, setNoteDate] = useState(initialData?.date || new Date().toISOString().split('T')[0]);
+    const [showDatePicker, setShowDatePicker] = useState(false);
     
     const handleSave = () => {
         onSave({
             id: initialData?.id || Date.now().toString(),
             title,
             content,
-            date: initialData?.date || new Date().toISOString().split('T')[0],
+            date: noteDate,
             type: 'note'
         });
     };
 
-    const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '.');
+    const dateStr = noteDate.replace(/-/g, '.');
 
     return (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -269,9 +280,26 @@ const NoteModal: React.FC<{onClose: () => void, onSave: (n: NoteCard) => void, i
                 {/* Paper Header Section */}
                 <div className="pt-12 px-10 pb-4">
                     <div className="flex justify-between items-end font-typewriter text-xs text-slate-800 opacity-80 mb-1">
-                        <span>omont.{dateStr}</span>
+                        <button 
+                            onClick={() => setShowDatePicker(!showDatePicker)}
+                            className="hover:opacity-100 hover:underline cursor-pointer transition-opacity"
+                        >
+                            omont.{dateStr}
+                        </button>
                         <span>{language === 'en' ? 'boring office' : '日常记录'}</span>
                     </div>
+                    {/* Date Picker (For Testing) */}
+                    {showDatePicker && (
+                        <div className="mb-3 pb-3 border-b border-dashed border-slate-300">
+                            <input 
+                                type="date"
+                                value={noteDate}
+                                onChange={(e) => setNoteDate(e.target.value)}
+                                className="text-xs px-2 py-1 border border-slate-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
+                            />
+                            <p className="text-[9px] text-slate-400 mt-1 font-light">💡 Tip: Change date to test monthly notes (use 2026 dates)</p>
+                        </div>
+                    )}
                     {/* The hard line */}
                     <div className="w-full h-px bg-slate-800"></div>
                 </div>
