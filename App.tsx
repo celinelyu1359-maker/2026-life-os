@@ -4,10 +4,12 @@ import Dashboard from './components/Dashboard';
 import AnnualSettings from './components/AnnualSettings';
 import MonthlyNotebook from './components/MonthlyNotebook';
 import ReadingMovies from './components/ReadingMovies';
+import AuthScreen from './components/AuthScreen';
 import { View, NoteCard, ChallengeItem, MonthlyGoal, Language } from './types';
 import { X, Plus, Save } from 'lucide-react';
 // ✅ 关键导入：确保 utils 路径正确，且 getCurrentWeekNumber 在 utils.ts 中
 import { getCurrentWeekNumber } from './utils';
+import { supabase, isSupabaseConfigured } from './supabaseClient';
 
 // LocalStorage Keys (需要与 Dashboard.tsx 中使用的保持一致)
 const CURRENT_WEEK_KEY = 'current-week-num-2026';
@@ -45,6 +47,9 @@ const getInitialWeek = (): number => {
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [language, setLanguage] = useState<Language>('en');
+
+  // --- Auth State (Supabase) ---
+  const [user, setUser] = useState<any>(null);
   
   // Navigation State
   // ✅ 修正点：使用 getInitialWeek() 确保初始周数正确加载
@@ -60,30 +65,70 @@ const App: React.FC = () => {
       0: [{ id: 'mg1', text: 'Finish 4 weekly reviews on time', completed: false }]
   });
 
-  // ✅ Load notes from localStorage on mount
+  // ✅ Supabase auth boot
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (!isSupabaseConfigured) {
+      setIsLoaded(true);
+      return;
+    }
+
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setUser(data.session?.user ?? null);
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  // ✅ Load notes: Supabase (if logged in) else localStorage
+  useEffect(() => {
+    const load = async () => {
       try {
-        const savedNotes = window.localStorage.getItem(NOTES_KEY);
-        if (savedNotes) {
-          const parsed = JSON.parse(savedNotes);
-          if (Array.isArray(parsed)) {
-            setNotes(parsed);
+        if (isSupabaseConfigured && user) {
+          const { data, error } = await supabase
+            .from('notes')
+            .select('id,title,content,date,type')
+            .order('date', { ascending: false });
+          if (error) throw error;
+          if (Array.isArray(data)) setNotes(data as NoteCard[]);
+          setIsLoaded(true);
+          return;
+        }
+
+        // Local-only mode
+        if (typeof window !== 'undefined') {
+          const savedNotes = window.localStorage.getItem(NOTES_KEY);
+          if (savedNotes) {
+            const parsed = JSON.parse(savedNotes);
+            if (Array.isArray(parsed)) setNotes(parsed);
           }
         }
       } catch (e) {
-        console.error('Failed to load notes from localStorage', e);
+        console.error('Failed to load notes', e);
       } finally {
         setIsLoaded(true);
       }
-    }
-  }, []);
+    };
+
+    load();
+  }, [user]);
 
   // ✅ Save notes to localStorage when they change
   useEffect(() => {
     if (isLoaded) {
       try {
-        window.localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
+        // Keep local cache even when logged in (fast UI + offline fallback)
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
+        }
       } catch (e) {
         console.error('Failed to save notes to localStorage', e);
       }
@@ -139,7 +184,7 @@ const App: React.FC = () => {
       setActiveView('dashboard');
   };
 
-  const handleSaveNote = (note: NoteCard) => {
+  const handleSaveNote = async (note: NoteCard) => {
     if(editingNote && notes.find(n => n.id === editingNote.id)) {
         // Update existing
         setNotes(prev => prev.map(n => n.id === note.id ? note : n));
@@ -147,6 +192,24 @@ const App: React.FC = () => {
         // Add new
         setNotes(prev => [note, ...prev]);
     }
+
+    // Cloud sync (best-effort)
+    if (isSupabaseConfigured && user) {
+      try {
+        const { error } = await supabase.from('notes').upsert({
+          id: note.id,
+          user_id: user.id,
+          title: note.title,
+          content: note.content,
+          date: note.date,
+          type: note.type,
+        });
+        if (error) throw error;
+      } catch (e) {
+        console.error('Supabase upsert note failed', e);
+      }
+    }
+
     closeModal();
   };
 
@@ -197,6 +260,11 @@ const App: React.FC = () => {
         />;
     }
   };
+
+  // ✅ Auth gate (only when Supabase configured)
+  if (isSupabaseConfigured && !user) {
+    return <AuthScreen />;
+  }
 
   return (
     <div className="flex min-h-screen bg-[#f8fafc]">
