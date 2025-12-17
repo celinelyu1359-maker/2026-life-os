@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Book, Film, Star, Plus, X, Trash2, Search, Calendar } from 'lucide-react';
 import { ReadingItem, Language } from '../types';
+import { supabase, isSupabaseConfigured } from '../supabaseClient';
 
 // ✅ LocalStorage Key
 const READING_ITEMS_KEY = 'reading-movies-items-2026';
@@ -16,9 +17,10 @@ const defaultItems: ReadingItem[] = [
 
 interface ReadingMoviesProps {
     language: Language;
+    user?: any; // Supabase user object
 }
 
-const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language }) => {
+const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language, user }) => {
   // ✅ State with default values
   const [items, setItems] = useState<ReadingItem[]>(defaultItems);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -31,35 +33,158 @@ const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language }) => {
   const [newItem, setNewItem] = useState<Partial<ReadingItem>>({ type: 'book', rating: 3, tags: [] });
   const [tempTag, setTempTag] = useState('');
 
-  // ✅ Load from localStorage on mount
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const savedItems = window.localStorage.getItem(READING_ITEMS_KEY);
-        if (savedItems) {
-          const parsed = JSON.parse(savedItems);
-          if (Array.isArray(parsed)) {
-            setItems(parsed);
-          }
+  // 辅助函数：同步 Reading Movies 到云端
+  const syncReadingMoviesToCloud = useCallback(async (itemsData: ReadingItem[], userId: string) => {
+    if (!isSupabaseConfigured) return;
+
+    try {
+      const rows = itemsData.map(item => ({
+        id: item.id,
+        user_id: userId,
+        title: item.title,
+        type: item.type,
+        rating: item.rating,
+        tags: item.tags || [],
+        review: item.review || '',
+        date_finished: item.dateFinished,
+      }));
+
+      if (rows.length > 0) {
+        const { error } = await supabase.from('reading_movies').upsert(rows, {
+          onConflict: 'id',
+        });
+
+        if (error) {
+          console.error('Reading movies sync error:', error);
+          throw error;
         }
-      } catch (e) {
-        console.error('Failed to load reading items from localStorage', e);
-      } finally {
-        setIsLoaded(true);
       }
+    } catch (e) {
+      console.error('Failed to sync reading movies to cloud', e);
     }
   }, []);
 
-  // ✅ Save to localStorage when items change
+  // ✅ Load from Supabase (优先) or localStorage (fallback)
   useEffect(() => {
-    if (isLoaded) {
-      try {
-        window.localStorage.setItem(READING_ITEMS_KEY, JSON.stringify(items));
-      } catch (e) {
-        console.error('Failed to save reading items to localStorage', e);
+    const load = async () => {
+      // 如果配置了 Supabase 且用户已登录，从云端加载
+      if (isSupabaseConfigured && user) {
+        try {
+          console.log('📥 Loading reading movies from Supabase for user:', user.id);
+          
+          const { data, error } = await supabase
+            .from('reading_movies')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('date_finished', { ascending: false });
+
+          if (error) throw error;
+
+          if (data && data.length > 0) {
+            // 转换数据库格式到应用格式
+            const converted: ReadingItem[] = data.map(row => ({
+              id: row.id,
+              title: row.title,
+              type: row.type as 'book' | 'movie',
+              rating: row.rating,
+              tags: row.tags || [],
+              review: row.review || '',
+              dateFinished: row.date_finished,
+            }));
+            setItems(converted);
+            console.log('📋 Loaded reading movies:', converted.length, 'items');
+          } else {
+            // 云端没有数据，尝试从 localStorage 加载并同步
+            if (typeof window !== 'undefined') {
+              try {
+                const savedItems = window.localStorage.getItem(READING_ITEMS_KEY);
+                if (savedItems) {
+                  const parsed = JSON.parse(savedItems);
+                  if (Array.isArray(parsed)) {
+                    setItems(parsed);
+                    // 同步到云端（延迟执行，避免在加载时触发）
+                    setTimeout(() => syncReadingMoviesToCloud(parsed, user.id), 100);
+                  } else {
+                    setItems([]);
+                  }
+                } else {
+                  setItems([]);
+                }
+              } catch (e) {
+                console.error('Failed to load from localStorage', e);
+                setItems([]);
+              }
+            } else {
+              setItems([]);
+            }
+          }
+        } catch (e) {
+          console.error('Failed to load reading movies from Supabase', e);
+          // 失败时 fallback 到 localStorage
+          if (typeof window !== 'undefined') {
+            try {
+              const savedItems = window.localStorage.getItem(READING_ITEMS_KEY);
+              if (savedItems) {
+                const parsed = JSON.parse(savedItems);
+                if (Array.isArray(parsed)) {
+                  setItems(parsed);
+                } else {
+                  setItems([]);
+                }
+              } else {
+                setItems([]);
+              }
+            } catch (err) {
+              console.error('Failed to load from localStorage', err);
+              setItems([]);
+            }
+          } else {
+            setItems([]);
+          }
+        } finally {
+          setIsLoaded(true);
+        }
+      } else {
+        // 未配置 Supabase 或未登录，只从 localStorage 加载
+        if (typeof window !== 'undefined') {
+          try {
+            const savedItems = window.localStorage.getItem(READING_ITEMS_KEY);
+            if (savedItems) {
+              const parsed = JSON.parse(savedItems);
+              if (Array.isArray(parsed)) {
+                setItems(parsed);
+              }
+            }
+          } catch (e) {
+            console.error('Failed to load reading items from localStorage', e);
+          } finally {
+            setIsLoaded(true);
+          }
+        }
       }
+    };
+
+    load();
+  }, [user, syncReadingMoviesToCloud]);
+
+  // ✅ Save to localStorage and Supabase
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    // 1. 始终保存到 localStorage
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(READING_ITEMS_KEY, JSON.stringify(items));
+      }
+    } catch (e) {
+      console.error('Failed to save reading items to localStorage', e);
     }
-  }, [items, isLoaded]);
+
+    // 2. 如果配置了 Supabase 且用户已登录，同步到云端
+    if (isSupabaseConfigured && user) {
+      syncReadingMoviesToCloud(items, user.id);
+    }
+  }, [items, isLoaded, user, syncReadingMoviesToCloud]);
 
   // --- Logic ---
   const handleAddItem = () => {
@@ -85,9 +210,27 @@ const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language }) => {
       }
   };
 
-  const deleteItem = (id: string) => {
+  const deleteItem = async (id: string) => {
+      // 1. 更新本地状态
       setItems(prev => prev.filter(i => i.id !== id));
       setSelectedItem(null);
+
+      // 2. 从云端删除
+      if (isSupabaseConfigured && user) {
+        try {
+          const { error } = await supabase
+            .from('reading_movies')
+            .delete()
+            .eq('id', id)
+            .eq('user_id', user.id);
+
+          if (error) {
+            console.error('Failed to delete reading movie from cloud:', error);
+          }
+        } catch (e) {
+          console.error('Error deleting reading movie:', e);
+        }
+      }
   };
 
   const filteredItems = items.filter(item => {

@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, X, Square, CheckSquare } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { Dimension, ToDoItem } from '../types';
+import { supabase, isSupabaseConfigured } from '../supabaseClient';
 
 // ✅ localStorage 用的 key
 const DIMENSIONS_KEY = 'annual-dimensions-2026';
@@ -36,7 +37,11 @@ const defaultTodos: ToDoItem[] = [
   { id: 'todo2', text: '幸福 (Happiness)', completed: false },
 ];
 
-const AnnualSettings: React.FC = () => {
+interface AnnualSettingsProps {
+  user?: any; // Supabase user object
+}
+
+const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user }) => {
   console.log("🔥 AnnualSettings FILE IS LOADED 🔥");
 
   // 1️⃣ 状态初始化：先只用默认值，避免服务端/客户端不一致报错
@@ -50,52 +55,164 @@ const AnnualSettings: React.FC = () => {
   const [addingToDimId, setAddingToDimId] = useState<string | null>(null);
   const [newItemText, setNewItemText] = useState('');
 
-  // 3️⃣ 挂载时读取：只在客户端运行，读取 localStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const savedDimensions = window.localStorage.getItem(DIMENSIONS_KEY);
-        const savedTodos = window.localStorage.getItem(TODOS_KEY);
+  // 辅助函数：同步 Annual Settings 到云端
+  const syncAnnualSettingsToCloud = useCallback(async (dims: Dimension[], todosData: ToDoItem[], userId: string) => {
+    if (!isSupabaseConfigured) return;
 
-        if (savedDimensions) {
-          const parsed = JSON.parse(savedDimensions);
-          if (Array.isArray(parsed)) setDimensions(parsed);
-        }
-        
-        if (savedTodos) {
-          const parsed = JSON.parse(savedTodos);
-          if (Array.isArray(parsed)) setTodos(parsed);
-        }
-      } catch (e) {
-        console.error('Failed to load from localStorage', e);
-      } finally {
-        // 关键：读取结束，打开安全锁
-        setIsLoaded(true);
-      }
+    try {
+      const { error } = await supabase.from('annual_settings').upsert({
+        id: `${userId}-2026`,
+        user_id: userId,
+        year: 2026,
+        dimensions: dims,
+        todos: todosData,
+      }, {
+        onConflict: 'id',
+      });
+
+      if (error) throw error;
+    } catch (e) {
+      console.error('Failed to sync annual settings to cloud', e);
     }
   }, []);
 
-  // 4️⃣ 保存 Dimensions：只有 isLoaded 为 true 时才保存
+  // 3️⃣ 挂载时读取：优先从 Supabase，fallback 到 localStorage
   useEffect(() => {
-    if (isLoaded) {
-      try {
-        window.localStorage.setItem(DIMENSIONS_KEY, JSON.stringify(dimensions));
-      } catch (e) {
-        console.error('Failed to save dimensions', e);
-      }
-    }
-  }, [dimensions, isLoaded]);
+    const load = async () => {
+      // 如果配置了 Supabase 且用户已登录，从云端加载
+      if (isSupabaseConfigured && user) {
+        try {
+          const { data, error } = await supabase
+            .from('annual_settings')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('year', 2026)
+            .single();
 
-  // 5️⃣ 保存 Todos：只有 isLoaded 为 true 时才保存
-  useEffect(() => {
-    if (isLoaded) {
-      try {
-        window.localStorage.setItem(TODOS_KEY, JSON.stringify(todos));
-      } catch (e) {
-        console.error('Failed to save todos', e);
+          if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows returned
+
+          if (data) {
+            setDimensions(data.dimensions || defaultDimensions);
+            setTodos(data.todos || defaultTodos);
+          } else {
+            // 云端没有数据，尝试从 localStorage 加载并同步
+            if (typeof window !== 'undefined') {
+              try {
+                const savedDimensions = window.localStorage.getItem(DIMENSIONS_KEY);
+                const savedTodos = window.localStorage.getItem(TODOS_KEY);
+
+                if (savedDimensions) {
+                  const parsed = JSON.parse(savedDimensions);
+                  if (Array.isArray(parsed)) setDimensions(parsed);
+                }
+                
+                if (savedTodos) {
+                  const parsed = JSON.parse(savedTodos);
+                  if (Array.isArray(parsed)) setTodos(parsed);
+                }
+
+                // 同步到云端
+                setTimeout(() => {
+                  syncAnnualSettingsToCloud(
+                    savedDimensions ? JSON.parse(savedDimensions) : defaultDimensions,
+                    savedTodos ? JSON.parse(savedTodos) : defaultTodos,
+                    user.id
+                  );
+                }, 100);
+              } catch (e) {
+                console.error('Failed to load from localStorage', e);
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Failed to load annual settings from Supabase', e);
+          // 失败时 fallback 到 localStorage
+          if (typeof window !== 'undefined') {
+            try {
+              const savedDimensions = window.localStorage.getItem(DIMENSIONS_KEY);
+              const savedTodos = window.localStorage.getItem(TODOS_KEY);
+
+              if (savedDimensions) {
+                const parsed = JSON.parse(savedDimensions);
+                if (Array.isArray(parsed)) setDimensions(parsed);
+              }
+              
+              if (savedTodos) {
+                const parsed = JSON.parse(savedTodos);
+                if (Array.isArray(parsed)) setTodos(parsed);
+              }
+            } catch (err) {
+              console.error('Failed to load from localStorage', err);
+            }
+          }
+        } finally {
+          setIsLoaded(true);
+        }
+      } else {
+        // 未配置 Supabase 或未登录，只从 localStorage 加载
+        if (typeof window !== 'undefined') {
+          try {
+            const savedDimensions = window.localStorage.getItem(DIMENSIONS_KEY);
+            const savedTodos = window.localStorage.getItem(TODOS_KEY);
+
+            if (savedDimensions) {
+              const parsed = JSON.parse(savedDimensions);
+              if (Array.isArray(parsed)) setDimensions(parsed);
+            }
+            
+            if (savedTodos) {
+              const parsed = JSON.parse(savedTodos);
+              if (Array.isArray(parsed)) setTodos(parsed);
+            }
+          } catch (e) {
+            console.error('Failed to load from localStorage', e);
+          } finally {
+            setIsLoaded(true);
+          }
+        }
       }
+    };
+
+    load();
+  }, [user, syncAnnualSettingsToCloud]);
+
+  // 4️⃣ 保存 Dimensions：同时保存到 localStorage 和 Supabase
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    // 1. 始终保存到 localStorage
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(DIMENSIONS_KEY, JSON.stringify(dimensions));
+      }
+    } catch (e) {
+      console.error('Failed to save dimensions', e);
     }
-  }, [todos, isLoaded]);
+
+    // 2. 如果配置了 Supabase 且用户已登录，同步到云端
+    if (isSupabaseConfigured && user) {
+      syncAnnualSettingsToCloud(dimensions, todos, user.id);
+    }
+  }, [dimensions, isLoaded, user, todos, syncAnnualSettingsToCloud]);
+
+  // 5️⃣ 保存 Todos：同时保存到 localStorage 和 Supabase
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    // 1. 始终保存到 localStorage
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(TODOS_KEY, JSON.stringify(todos));
+      }
+    } catch (e) {
+      console.error('Failed to save todos', e);
+    }
+
+    // 2. 如果配置了 Supabase 且用户已登录，同步到云端
+    if (isSupabaseConfigured && user) {
+      syncAnnualSettingsToCloud(dimensions, todos, user.id);
+    }
+  }, [todos, isLoaded, user, dimensions, syncAnnualSettingsToCloud]);
 
   // --- Dimension Logic ---
   const startAddDimensionItem = (dimId: string) => {

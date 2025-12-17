@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Settings, Calendar, BookOpen, PenSquare, Languages } from 'lucide-react';
+import { LayoutDashboard, Settings, Calendar, BookOpen, PenSquare, Languages, LogOut, User } from 'lucide-react';
 import { View, Language } from '../types';
 
 interface SidebarProps {
@@ -9,6 +9,8 @@ interface SidebarProps {
   currentWeek: number;
   language: Language;
   setLanguage: (l: Language) => void;
+  user?: any;
+  onLogout?: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -17,7 +19,9 @@ const Sidebar: React.FC<SidebarProps> = ({
     onOpenQuickNote, 
     currentWeek,
     language,
-    setLanguage
+    setLanguage,
+    user,
+    onLogout
 }) => {
   const menuItems = [
     { id: 'dashboard', label: language === 'en' ? `Week ${currentWeek}` : `第 ${currentWeek} 周`, icon: LayoutDashboard },
@@ -74,7 +78,34 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      <div className="border-t border-slate-200 pt-6 mt-6">
+      <div className="border-t border-slate-200 pt-6 mt-6 space-y-4">
+        {/* User Info & Logout */}
+        {user && onLogout && (
+          <div className="mb-4 pb-4 border-b border-slate-200">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center">
+                <User size={14} className="text-slate-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] font-medium text-slate-700 truncate">
+                  {user.email || 'User'}
+                </p>
+                <p className="text-[9px] text-slate-400">
+                  {language === 'en' ? 'Synced' : '已同步'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onLogout}
+              className="w-full flex items-center justify-center gap-2 text-[10px] font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors"
+            >
+              <LogOut size={12} />
+              <span>{language === 'en' ? 'Log Out' : '退出登录'}</span>
+            </button>
+          </div>
+        )}
+
+        {/* Language Selector */}
         <div className="flex items-center justify-between mb-4">
             <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{language === 'en' ? 'LANG' : '语言'}</span>
             <button 

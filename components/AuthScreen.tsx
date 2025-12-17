@@ -24,16 +24,33 @@ const AuthScreen: React.FC = () => {
 
     try {
       setLoading(true);
+      setMsg(null);
+      
       if (mode === 'signUp') {
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-        setMsg('Signed up! Check your email if confirmation is enabled, then sign in.');
+        setMsg('✅ Signed up successfully! Check your email if confirmation is enabled, then sign in.');
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        setMsg('✅ Signed in successfully!');
+        // Clear message after 2 seconds
+        setTimeout(() => setMsg(null), 2000);
       }
     } catch (e: any) {
-      setMsg(e?.message ?? 'Auth failed');
+      const errorMessage = e?.message || 'Authentication failed';
+      // Provide user-friendly error messages
+      let friendlyMessage = errorMessage;
+      if (errorMessage.includes('Invalid login credentials')) {
+        friendlyMessage = 'Invalid email or password. Please try again.';
+      } else if (errorMessage.includes('User already registered')) {
+        friendlyMessage = 'This email is already registered. Please sign in instead.';
+      } else if (errorMessage.includes('Password')) {
+        friendlyMessage = 'Password must be at least 6 characters long.';
+      } else if (errorMessage.includes('Email')) {
+        friendlyMessage = 'Please enter a valid email address.';
+      }
+      setMsg(`❌ ${friendlyMessage}`);
     } finally {
       setLoading(false);
     }
@@ -70,7 +87,13 @@ const AuthScreen: React.FC = () => {
           </div>
 
           {msg && (
-            <div className="text-xs rounded-xl bg-slate-50 border border-slate-200 p-3 text-slate-700">
+            <div className={`text-xs rounded-xl border p-3 ${
+              msg.includes('Signed up') || msg.includes('成功') || msg.includes('Success')
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : msg.includes('failed') || msg.includes('失败') || msg.includes('error') || msg.includes('错误')
+                ? 'bg-red-50 border-red-200 text-red-800'
+                : 'bg-slate-50 border-slate-200 text-slate-700'
+            }`}>
               {msg}
             </div>
           )}

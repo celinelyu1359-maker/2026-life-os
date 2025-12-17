@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Plus, ChevronLeft, ChevronRight, Trash2, CheckSquare, Square, CalendarClock, RotateCcw, Edit2, Save, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { ScoreboardItem, ChallengeItem } from '../types';
 import { getWeekRange } from '../utils';
+import { supabase, isSupabaseConfigured } from '../supabaseClient';
 
 // =======================================================
 // ✅ 1. LocalStorage Keys & Internal Data Structure
@@ -108,11 +109,13 @@ const defaultAllWeeksData: WeeklyData[] = [
 interface DashboardProps {
     weekNumber: number;
     setWeekNumber: (n: number) => void;
+    user?: any; // Supabase user object
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
     weekNumber, 
     setWeekNumber,
+    user,
 }) => {
     // =======================================================
     // ✅ 3. 内部状态定义
@@ -128,44 +131,138 @@ const Dashboard: React.FC<DashboardProps> = ({
     const [newChallenge, setNewChallenge] = useState('');
     const [newHappyHour, setNewHappyHour] = useState('');
 
+    // 辅助函数：同步所有周数据到云端
+    const syncAllWeeksToCloud = useCallback(async (weeksData: WeeklyData[], userId: string) => {
+        if (!isSupabaseConfigured) return;
 
-    // =======================================================
-    // ✅ 4. LocalStorage 数据加载
-    // =======================================================
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                const savedData = window.localStorage.getItem(ALL_WEEKS_DATA_KEY);
-                
-                if (savedData) {
-                    const parsed = JSON.parse(savedData);
-                    if (Array.isArray(parsed)) {
-                        setAllWeeksData(parsed);
-                    }
-                }
-            } catch (e) {
-                console.error('Failed to load dashboard data from localStorage', e);
-            } finally {
-                setIsLoaded(true); 
-            }
+        try {
+            const rows = weeksData.map(week => ({
+                id: `${userId}-${week.weekNum}-2026`,
+                user_id: userId,
+                week_num: week.weekNum,
+                year: 2026,
+                scoreboard: week.scoreboard,
+                challenges: week.challenges,
+                happy_hours: week.happyHours,
+            }));
+
+            const { error } = await supabase.from('dashboard_data').upsert(rows, {
+                onConflict: 'id',
+            });
+
+            if (error) throw error;
+        } catch (e) {
+            console.error('Failed to sync dashboard data to cloud', e);
         }
     }, []);
 
     // =======================================================
-    // ✅ 5. LocalStorage 数据保存 (监听 allWeeksData 和 weekNumber 变化)
+    // ✅ 4. 数据加载：优先从 Supabase，fallback 到 localStorage
     // =======================================================
     useEffect(() => {
-        if (isLoaded) {
-            try {
-                // 保存所有周的数据
-                window.localStorage.setItem(ALL_WEEKS_DATA_KEY, JSON.stringify(allWeeksData));
-                // 保存当前正在浏览的周数
-                window.localStorage.setItem(CURRENT_WEEK_KEY, String(weekNumber));
-            } catch (e) {
-                console.error('Failed to save data to localStorage', e);
+        const load = async () => {
+            // 如果配置了 Supabase 且用户已登录，从云端加载
+            if (isSupabaseConfigured && user) {
+                try {
+                    const { data, error } = await supabase
+                        .from('dashboard_data')
+                        .select('*')
+                        .eq('user_id', user.id)
+                        .eq('year', 2026)
+                        .order('week_num', { ascending: true });
+
+                    if (error) throw error;
+
+                    if (data && data.length > 0) {
+                        // 转换数据库格式到应用格式
+                        const converted: WeeklyData[] = data.map(row => ({
+                            weekNum: row.week_num,
+                            scoreboard: row.scoreboard || [],
+                            challenges: row.challenges || [],
+                            happyHours: row.happy_hours || [],
+                        }));
+                        setAllWeeksData(converted);
+                    } else {
+                        // 云端没有数据，尝试从 localStorage 加载
+                        if (typeof window !== 'undefined') {
+                            try {
+                                const savedData = window.localStorage.getItem(ALL_WEEKS_DATA_KEY);
+                                if (savedData) {
+                                    const parsed = JSON.parse(savedData);
+                                    if (Array.isArray(parsed)) {
+                                        setAllWeeksData(parsed);
+                                        // 将 localStorage 数据同步到云端
+                                        syncAllWeeksToCloud(parsed, user.id);
+                                    }
+                                }
+                            } catch (e) {
+                                console.error('Failed to load from localStorage', e);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to load dashboard data from Supabase', e);
+                    // 失败时 fallback 到 localStorage
+                    if (typeof window !== 'undefined') {
+                        try {
+                            const savedData = window.localStorage.getItem(ALL_WEEKS_DATA_KEY);
+                            if (savedData) {
+                                const parsed = JSON.parse(savedData);
+                                if (Array.isArray(parsed)) {
+                                    setAllWeeksData(parsed);
+                                }
+                            }
+                        } catch (err) {
+                            console.error('Failed to load from localStorage', err);
+                        }
+                    }
+                } finally {
+                    setIsLoaded(true);
+                }
+            } else {
+                // 未配置 Supabase 或未登录，只从 localStorage 加载
+                if (typeof window !== 'undefined') {
+                    try {
+                        const savedData = window.localStorage.getItem(ALL_WEEKS_DATA_KEY);
+                        if (savedData) {
+                            const parsed = JSON.parse(savedData);
+                            if (Array.isArray(parsed)) {
+                                setAllWeeksData(parsed);
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Failed to load dashboard data from localStorage', e);
+                    } finally {
+                        setIsLoaded(true);
+                    }
+                }
             }
+        };
+
+        load();
+    }, [user, syncAllWeeksToCloud]);
+
+    // =======================================================
+    // ✅ 5. 数据保存：同时保存到 localStorage 和 Supabase
+    // =======================================================
+    useEffect(() => {
+        if (!isLoaded) return;
+
+        // 1. 始终保存到 localStorage（作为 fallback）
+        try {
+            if (typeof window !== 'undefined') {
+                window.localStorage.setItem(ALL_WEEKS_DATA_KEY, JSON.stringify(allWeeksData));
+                window.localStorage.setItem(CURRENT_WEEK_KEY, String(weekNumber));
+            }
+        } catch (e) {
+            console.error('Failed to save data to localStorage', e);
         }
-    }, [allWeeksData, isLoaded, weekNumber]); 
+
+        // 2. 如果配置了 Supabase 且用户已登录，同步到云端
+        if (isSupabaseConfigured && user) {
+            syncAllWeeksToCloud(allWeeksData, user.id);
+        }
+    }, [allWeeksData, isLoaded, weekNumber, user, syncAllWeeksToCloud]); 
 
     
     // =======================================================
