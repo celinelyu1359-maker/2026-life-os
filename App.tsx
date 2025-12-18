@@ -174,27 +174,8 @@ const App: React.FC = () => {
   useEffect(() => {
     const load = async () => {
       if (!isSupabaseConfigured || !user) {
-        // 未配置或未登录，尝试从 localStorage 加载
-        if (typeof window !== 'undefined') {
-          try {
-            const saved = window.localStorage.getItem('monthly-goals-2026');
-            if (saved) {
-              const parsed = JSON.parse(saved);
-              if (parsed && typeof parsed === 'object') {
-                setMonthlyGoalsData(parsed);
-              } else {
-                setMonthlyGoalsData({});
-              }
-            } else {
-              setMonthlyGoalsData({});
-            }
-          } catch (e) {
-            console.error('Failed to load monthly goals from localStorage', e);
-            setMonthlyGoalsData({});
-          }
-        } else {
-          setMonthlyGoalsData({});
-        }
+        // 未配置或未登录，清空数据（不从 localStorage 加载，避免串号）
+        setMonthlyGoalsData({});
         setMonthlyGoalsLoaded(true);
         return;
       }
@@ -217,10 +198,11 @@ const App: React.FC = () => {
           });
           setMonthlyGoalsData(converted);
         } else {
-          // 云端没有数据，尝试从 localStorage 加载并同步
+          // 云端没有数据，尝试从用户专属的 localStorage 加载并同步
           if (typeof window !== 'undefined') {
             try {
-              const saved = window.localStorage.getItem('monthly-goals-2026');
+              const userSpecificKey = `monthly-goals-2026-${user.id}`;
+              const saved = window.localStorage.getItem(userSpecificKey);
               if (saved) {
                 const parsed = JSON.parse(saved);
                 if (parsed && typeof parsed === 'object') {
@@ -276,13 +258,14 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!monthlyGoalsLoaded) return; // 等待加载完成后再保存
 
-    // 1. 始终保存到 localStorage
-    try {
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('monthly-goals-2026', JSON.stringify(monthlyGoalsData));
+    // 1. 只有登录用户才保存到 localStorage（使用用户专属 key）
+    if (user && typeof window !== 'undefined') {
+      try {
+        const userSpecificKey = `monthly-goals-2026-${user.id}`;
+        window.localStorage.setItem(userSpecificKey, JSON.stringify(monthlyGoalsData));
+      } catch (e) {
+        console.error('Failed to save monthly goals to localStorage', e);
       }
-    } catch (e) {
-      console.error('Failed to save monthly goals to localStorage', e);
     }
 
     // 2. 如果配置了 Supabase 且用户已登录，同步到云端
@@ -485,6 +468,15 @@ const handleSaveNote = async (note: NoteCard) => {
       setUser(null);
       setNotes(defaultNotes);
       setMonthlyGoalsData({});
+      
+      // 🔧 清理旧的共享 localStorage key（防止数据泄漏）
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.removeItem('monthly-goals-2026');
+        } catch (e) {
+          console.error('Failed to clear old localStorage', e);
+        }
+      }
       
       const successMsg = language === 'en' ? 'Logged out successfully' : '已成功退出登录';
       toast.success(successMsg, 2000);
