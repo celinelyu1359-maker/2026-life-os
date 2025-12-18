@@ -11,8 +11,8 @@
     }
   ],
   "env": {
-    "VITE_SUPABASE_URL": "@vite_supabase_url",
-    "VITE_SUPABASE_ANON_KEY": "@vite_supabase_anon_key"
+    "VITE_SUPABASE_URL": "https://npjupjeryixhbqqinrqk.supabase.co",
+    "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5wanVwamVyeWl4aGJxcWlucnFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU3OTI4MTYsImV4cCI6MjA4MTM2ODgxNn0.HvZFmZSK_cIhBr-TmjgibYUsscm1iSUtw5p5eZz5yWc"
   }
 }
 
