@@ -19,10 +19,7 @@ interface AnnualSettingsProps {
 }
 
 const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }) => {
-  console.log("🔥 AnnualSettings FILE IS LOADED - VERSION 2.1.0 WITH QUICK ADD 🔥");
-  console.log("✅ Quick Add Features: Enabled");
-  console.log("✅ showDimensionQuickAdd state: Available");
-  console.log("✅ showTodoQuickAdd state: Available");
+  console.log("🔥 AnnualSettings FILE IS LOADED 🔥");
 
   // 1️⃣ 状态初始化：先只用默认值，避免服务端/客户端不一致报错
   const [dimensions, setDimensions] = useState<Dimension[]>(defaultDimensions);

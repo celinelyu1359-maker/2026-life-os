@@ -1,4 +1,3 @@
-// 2026 Life OS - Version 2.1.0 with Quick Add Features
 import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -49,9 +48,6 @@ const getInitialMonthIndex = (): number => {
 };
 
 const App: React.FC = () => {
-  console.log("🚀 App Version 2.1.0 - Quick Add Features + localStorage Security Fix");
-  console.log("📦 Features: Quick Add Suggestions, Modal Redesign, Motto Edit, localStorage Isolation");
-  
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [language, setLanguage] = useState<Language>('en');
 
