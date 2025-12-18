@@ -1,3 +1,4 @@
+// 2026 Life OS - Version 2.1.0 with Quick Add Features
 import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
