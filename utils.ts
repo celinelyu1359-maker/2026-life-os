@@ -1,47 +1,67 @@
 import { Language } from './types';
 
 export function getWeekRange(year: number, weekNumber: number, language: Language = 'en') {
-  const simple = new Date(year, 0, 1 + (weekNumber - 1) * 7);
-  const dayOfWeek = simple.getDay();
-  const ISOweekStart = simple;
-  if (dayOfWeek <= 4)
-      ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
-  else
-      ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
+  // ✅ 使用ISO 8601标准计算周的日期范围
+  // ISO Week 1 是包含当年第一个周四的那一周
   
-  const end = new Date(ISOweekStart);
-  end.setDate(ISOweekStart.getDate() + 6);
+  // 找到该年的第一个周四（Week 1的参考点）
+  const jan4 = new Date(year, 0, 4); // 1月4日总是在Week 1中
+  const jan4Day = jan4.getDay() || 7; // 周日=7
+  const firstMonday = new Date(jan4);
+  firstMonday.setDate(jan4.getDate() - jan4Day + 1); // 回到Week 1的周一
+  
+  // 计算目标周的周一（Week 1的周一 + (weekNumber - 1) * 7天）
+  const weekStart = new Date(firstMonday);
+  weekStart.setDate(firstMonday.getDate() + (weekNumber - 1) * 7);
+  
+  // 计算周日
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
   
   const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
   const locale = language === 'zh' ? 'zh-CN' : 'en-US';
-  return `${ISOweekStart.toLocaleDateString(locale, options)} - ${end.toLocaleDateString(locale, options)}`;
+  return `${weekStart.toLocaleDateString(locale, options)} - ${weekEnd.toLocaleDateString(locale, options)}`;
 }
 
 export function getWeeksInMonth(year: number, monthIndex: number, language: Language = 'en') {
+  // ✅ 只返回真正属于该月的周（至少有部分日期在该月）
   const weeks = [];
   const firstDay = new Date(year, monthIndex, 1);
   const lastDay = new Date(year, monthIndex + 1, 0);
   
-  // Very rough estimation of week numbers for the UI display
-  // In a production app, use a library like date-fns
-  let current = new Date(firstDay);
+  // 2025年只有52周，2026年有52周
+  const maxWeek = year === 2025 ? 52 : 52;
   
-  // Adjust to Monday
-  const day = current.getDay() || 7;
-  if (day !== 1) current.setHours(-24 * (day - 1));
-
-  let startWeekNum = Math.ceil((((current.getTime() - new Date(year, 0, 1).getTime()) / 86400000) + 1) / 7);
-  
-  // Generate 4-5 weeks
-  for(let i=0; i<5; i++) {
-     const wNum = startWeekNum + i;
-     if (wNum > 52) break; // Simplified
-     if (wNum < 1) continue; // Skip Week 0 and negative weeks
-     weeks.push({
-        weekNum: wNum,
-        range: getWeekRange(year, wNum, language)
-     });
+  // 从 Week 1 开始遍历
+  for (let weekNum = 1; weekNum <= maxWeek; weekNum++) {
+    // 获取该周的周一和周日
+    const jan4 = new Date(year, 0, 4);
+    const jan4Day = jan4.getDay() || 7;
+    const firstMonday = new Date(jan4);
+    firstMonday.setDate(jan4.getDate() - jan4Day + 1);
+    
+    const weekStart = new Date(firstMonday);
+    weekStart.setDate(firstMonday.getDate() + (weekNum - 1) * 7);
+    
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 6);
+    
+    // 检查该周是否与当月有重叠
+    // 周的任何一天在该月内，就算属于该月
+    const weekIntersectsMonth = (
+      (weekStart >= firstDay && weekStart <= lastDay) || // 周一在月内
+      (weekEnd >= firstDay && weekEnd <= lastDay) ||     // 周日在月内
+      (weekStart < firstDay && weekEnd > lastDay)        // 周跨越整个月
+    );
+    
+    if (weekIntersectsMonth) {
+      weeks.push({
+        weekNum: weekNum,
+        range: getWeekRange(year, weekNum, language)
+      });
+    }
   }
+  
   return weeks;
 }
 
@@ -56,30 +76,41 @@ export function formatNiceDate(dateStr: string, language: Language = 'en') {
     return d.toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-// ✅ 新增函数：获取当前的周数 (使用 ISO 8601 规则)
-export function getCurrentWeekNumber(year: number = 2026): number {
+// ✅ 获取当前真实的周数 (使用 ISO 8601 规则)
+// 支持2025年和2026年的跨年周数计算
+export function getCurrentWeekNumber(targetYear: number = 2026): number {
     const now = new Date();
+    const currentYear = now.getFullYear();
     
-    // 1. 如果不在规划年份 (2026)
-    if (now.getFullYear() !== year) {
-        if (now.getFullYear() > year) return 52; // 例如：在 2027 年看 2026 年，默认显示去年底
-        if (now.getFullYear() < year) return 1;  // 例如：在 2025 年看 2026 年，默认显示第 1 周
-    }
-    
+    // 计算当前日期的实际ISO周数
     const date = new Date(now.getTime());
     date.setHours(0, 0, 0, 0);
-
-    // 2. ISO 周数计算：将日期设置为当前周的周四（周四决定周数）
+    
+    // ISO 周数计算：将日期设置为当前周的周四（周四决定周数）
     date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
     
-    // 3. 找到当年第一个周四的日期 (总是 Week 1)
-    const yearStartThursday = new Date(date.getFullYear(), 0, 4);
+    // 找到实际年份的第一个周四（Week 1）
+    const actualYear = date.getFullYear(); // 周四所在的年份
+    const yearStartThursday = new Date(actualYear, 0, 4);
     yearStartThursday.setDate(yearStartThursday.getDate() + 3 - (yearStartThursday.getDay() + 6) % 7);
-
-    // 4. 计算周数
+    
+    // 计算周数
     const diffTime = date.getTime() - yearStartThursday.getTime();
     const weekNumber = 1 + Math.round(diffTime / (7 * 24 * 60 * 60 * 1000));
-
-    // 5. 边界保护
+    
+    // 如果是2025年，最多只有52周
+    if (actualYear === 2025) {
+        return Math.min(52, weekNumber);
+    }
+    
+    // 如果是2026年，返回周数（1-52范围）
+    if (actualYear === 2026) {
+        return Math.min(52, Math.max(1, weekNumber));
+    }
+    
+    // 其他年份的默认处理
+    if (actualYear > 2026) return 52;
+    if (actualYear < 2025) return 1;
+    
     return Math.min(52, Math.max(1, weekNumber));
 }

@@ -5,6 +5,7 @@ import AnnualSettings from './components/AnnualSettings';
 import MonthlyNotebook from './components/MonthlyNotebook';
 import ReadingMovies from './components/ReadingMovies';
 import AuthScreen from './components/AuthScreen';
+import PrivacyPolicy from './components/PrivacyPolicy';
 import { ToastContainer, useToast } from './components/Toast';
 import { View, NoteCard, MonthlyGoal, Language } from './types';
 import { Plus } from 'lucide-react';
@@ -18,14 +19,32 @@ import { supabase, isSupabaseConfigured } from './supabaseClient';
 const TARGET_YEAR = 2026;
 
 // Default notes data: 仅作为未登录/加载失败时的 fallback
-const defaultNotes: NoteCard[] = [
-  { id: '1', title: 'Example Note (Local Fallback)', date: '2026-01-01', content: 'Welcome to your Life OS. Please log in to sync your data.', type: 'note' }
-];
+const defaultNotes: NoteCard[] = [];
 
-// **已修改：获取初始周数 - 不再从 localStorage 读取**
+// **已修改：获取初始周数 - 自动定位到当前实际周数**
 const getInitialWeek = (): number => {
-  // 不再从 localStorage 读取，仅获取当前的实际周数
-  return getCurrentWeekNumber(TARGET_YEAR);
+  // 获取当前的真实周数（支持2025年和2026年）
+  return getCurrentWeekNumber();
+};
+
+// **获取初始月份索引 - 自动定位到当前月份**
+const getInitialMonthIndex = (): number => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth(); // 0-11
+  
+  // 如果是2025年12月，返回索引0
+  if (year === 2025 && month === 11) {
+    return 0;
+  }
+  
+  // 如果是2026年，返回月份+1（因为索引0是2025年12月）
+  if (year === 2026) {
+    return month + 1; // 0(Jan)→1, 1(Feb)→2, ..., 11(Dec)→12
+  }
+  
+  // 其他情况默认返回1（2026年1月）
+  return 1;
 };
 
 const App: React.FC = () => {
@@ -40,16 +59,17 @@ const App: React.FC = () => {
 
   // Navigation State
   const [currentWeek, setCurrentWeek] = useState<number>(getInitialWeek());
-  const [currentMonthIndex, setCurrentMonthIndex] = useState(0);
+  // 月份索引：0=2025年12月, 1=2026年1月, ..., 12=2026年12月
+  const [currentMonthIndex, setCurrentMonthIndex] = useState(getInitialMonthIndex());
 
   // Data State
   const [notes, setNotes] = useState<NoteCard[]>(defaultNotes);
   const [isLoaded, setIsLoaded] = useState(false);
   const [monthlyGoalsLoaded, setMonthlyGoalsLoaded] = useState(false);
+  const [motto, setMotto] = useState('Responsibility & Nutrition');
 
-  const [monthlyGoalsData, setMonthlyGoalsData] = useState<Record<number, MonthlyGoal[]>>({
-    0: [{ id: 'mg1', text: 'Finish 4 weekly reviews on time', completed: false }]
-  });
+  // 月度目标数据：key是monthIndex（0=2025年12月, 1=2026年1月, ..., 12=2026年12月）
+  const [monthlyGoalsData, setMonthlyGoalsData] = useState<Record<number, MonthlyGoal[]>>({});
 
   // Supabase auth boot (逻辑保持不变)
   useEffect(() => {
@@ -126,12 +146,13 @@ const App: React.FC = () => {
     if (!isSupabaseConfigured) return;
 
     try {
+      // 创建所有月份的记录（包括空数组）
       const rows = Object.entries(goalsData).map(([monthIndex, goals]) => ({
         id: `${userId}-${monthIndex}-2026`,
         user_id: userId,
         month_index: parseInt(monthIndex),
         year: 2026,
-        goals: Array.isArray(goals) ? goals : [], // 确保是数组
+        goals: Array.isArray(goals) ? goals : [], // 即使是空数组也要保存
       }));
 
       if (rows.length > 0) {
@@ -266,21 +287,8 @@ const App: React.FC = () => {
 
     // 2. 如果配置了 Supabase 且用户已登录，同步到云端
     if (isSupabaseConfigured && user) {
-      // 过滤掉空数组的月份，只同步有数据的月份
-      const nonEmptyGoals = Object.entries(monthlyGoalsData).reduce((acc, [monthIndex, goals]) => {
-        const goalsArray = Array.isArray(goals) ? goals : [];
-        if (goalsArray.length > 0) {
-          acc[parseInt(monthIndex)] = goalsArray;
-        }
-        return acc;
-      }, {} as Record<number, MonthlyGoal[]>);
-      
-      if (Object.keys(nonEmptyGoals).length > 0) {
-        syncMonthlyGoalsToCloud(nonEmptyGoals, user.id);
-      } else {
-        // 如果没有数据，也同步一个空对象（确保云端状态正确）
-        syncMonthlyGoalsToCloud({}, user.id);
-      }
+      // 同步所有月份，包括空数组（确保云端正确删除任务）
+      syncMonthlyGoalsToCloud(monthlyGoalsData, user.id);
     }
   }, [monthlyGoalsData, monthlyGoalsLoaded, user, syncMonthlyGoalsToCloud]);
 
@@ -329,11 +337,14 @@ const App: React.FC = () => {
 
     setMonthlyGoalsData(prev => {
       const nextMonth = currentMonthIndex + 1;
-      if (nextMonth > 11) return prev;
+      // 索引范围：0(2025年12月) -> 12(2026年12月)，所以最多延迟到12
+      if (nextMonth > 12) return prev;
 
       return {
         ...prev,
-        [currentMonthIndex]: prev[currentMonthIndex].filter(g => g.id !== id),
+        // 从当前月删除
+        [currentMonthIndex]: (prev[currentMonthIndex] || []).filter(g => g.id !== id),
+        // 添加到下个月
         [nextMonth]: [...(prev[nextMonth] || []), itemToDefer]
       };
     });
@@ -436,9 +447,9 @@ const handleSaveNote = async (note: NoteCard) => {
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard':
-        return <Dashboard weekNumber={currentWeek} setWeekNumber={setCurrentWeek} user={user} />;
+        return <Dashboard weekNumber={currentWeek} setWeekNumber={setCurrentWeek} user={user} language={language} />;
       case 'annual':
-        return <AnnualSettings user={user} />;
+        return <AnnualSettings user={user} language={language} />;
       case 'monthly':
         return (
           <MonthlyNotebook
@@ -457,8 +468,10 @@ const handleSaveNote = async (note: NoteCard) => {
         );
       case 'reading':
         return <ReadingMovies language={language} user={user} />;
+      case 'privacy':
+        return <PrivacyPolicy language={language} onBack={() => setActiveView('dashboard')} />;
       default:
-        return <Dashboard weekNumber={currentWeek} setWeekNumber={setCurrentWeek} />;
+        return <Dashboard weekNumber={currentWeek} setWeekNumber={setCurrentWeek} language={language} />;
     }
   };
 
@@ -484,6 +497,51 @@ const handleSaveNote = async (note: NoteCard) => {
     }
   };
 
+  // 导出数据功能
+  const handleExportData = () => {
+    try {
+      // 收集所有数据
+      const exportData = {
+        exportDate: new Date().toISOString(),
+        version: '1.0',
+        user: user ? { email: user.email, id: user.id } : null,
+        data: {
+          notes: notes,
+          monthlyGoals: monthlyGoalsData,
+          // 从localStorage读取其他数据
+          dashboardData: localStorage.getItem('annual-weekly-dashboards-2026'),
+          annualDimensions: localStorage.getItem('annual-dimensions-2026'),
+          annualTodos: localStorage.getItem('annual-todos-2026'),
+          readingMovies: localStorage.getItem('reading-movies-items-2026'),
+        }
+      };
+
+      // 创建并下载JSON文件
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `life-os-backup-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      const successMsg = language === 'en' ? 'Data exported successfully!' : '数据导出成功！';
+      toast.success(successMsg, 2000);
+    } catch (e: any) {
+      console.error('Export error:', e);
+      const errorMsg = language === 'en' 
+        ? `Failed to export data: ${e?.message || 'Unknown error'}`
+        : `导出数据失败: ${e?.message || '未知错误'}`;
+      toast.error(errorMsg);
+    }
+  };
+
+  // Google Form URL for feedback
+  const FEEDBACK_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSeZOkEocPS7UeURmQYWAhyhKyq3tYRw0ReHYLjNpC260_EI1w/viewform?usp=dialog';
+
   // 未登录时显示登录界面
   if (isSupabaseConfigured && !user) {
     return <AuthScreen />;
@@ -503,6 +561,10 @@ const handleSaveNote = async (note: NoteCard) => {
         setLanguage={setLanguage}
         user={user}
         onLogout={handleLogout}
+        onExportData={handleExportData}
+        feedbackFormUrl={FEEDBACK_FORM_URL}
+        motto={motto}
+        onMottoChange={setMotto}
       />
 
       <main className="md:ml-64 flex-1 p-0 overflow-y-auto h-screen pb-20 md:pb-0">{renderContent()}</main>

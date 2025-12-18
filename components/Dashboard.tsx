@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, ChevronLeft, ChevronRight, Trash2, CheckSquare, Square, CalendarClock, RotateCcw, Edit2, Save, TrendingUp, TrendingDown, Minus } from 'lucide-react';
-import { ScoreboardItem, ChallengeItem } from '../types';
-import { getWeekRange } from '../utils';
+import { Plus, ChevronLeft, ChevronRight, Trash2, CheckSquare, Square, CalendarClock, RotateCcw, Edit2, Save, TrendingUp, TrendingDown, Minus, Copy, Target, Lightbulb, X } from 'lucide-react';
+import { ScoreboardItem, ChallengeItem, Language } from '../types';
+import { getWeekRange, getCurrentWeekNumber } from '../utils';
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
+import Modal from './Modal';
 
 // =======================================================
 // ✅ 1. LocalStorage Keys & Internal Data Structure
@@ -19,49 +20,17 @@ export interface WeeklyData {
 }
 
 // 默认的 Scoreboard 初始化数据
-const defaultScoreboardItems: ScoreboardItem[] = [
-    { id: '1', goal: 'Gym', normal: '3hs', silver: '5hs', golden: '7hs', current: 0, max: 7, unit: 'hs', lastWeek: 0 },
-    { id: '2', goal: 'Supplements', normal: '5ds', silver: '6ds', golden: '7ds', current: 0, max: 7, unit: 'ds', lastWeek: 0 },
-    { id: '3', goal: 'Screen time', normal: '7hpd', silver: '6hs', golden: '5hs', current: 0, max: 7, unit: 'h', lastWeek: 0 },
-    { id: '4', goal: 'Connect', normal: '0', silver: '1', golden: '1', current: 0, max: 1, unit: '', lastWeek: 0 },
-    { id: '5', goal: 'Deep Focus', normal: '4ds', silver: '5ds', golden: '6ds', current: 0, max: 6, unit: 'ds', lastWeek: 0 },
-    { id: '6', goal: 'Sleep 7.5h', normal: '5d', silver: '4d', golden: '3d', current: 0, max: 7, unit: 'd', lastWeek: 0 },
-];
-
-// Week 1 示例进度 (用于第一次启动应用时)
-const exampleProgress: Record<string, number> = {
-    '1': 4,   // Gym
-    '2': 5,   // Supplements
-    '3': 2.5, // Screen time
-    '4': 1,   // Connect
-    '5': 3,   // Deep Focus
-    '6': 6,   // Sleep 7.5h
-};
+const defaultScoreboardItems: ScoreboardItem[] = [];
 
 // ------------------------------------------------------------------------
-// ✅ FIX 1: 创建具有示例数据的 Week 1 初始数据
+// ✅ 创建初始周数据（空白状态）
 // ------------------------------------------------------------------------
 const createInitialWeek1Data = (): WeeklyData => {
-    const scoreboardWithExamples = defaultScoreboardItems.map(item => ({ 
-        ...item, 
-        // 注入示例进度
-        current: exampleProgress[item.id] !== undefined ? exampleProgress[item.id] : 0 
-    }));
-    
-    const exampleChallenges: ChallengeItem[] = [
-        { id: 'c1', text: 'Complete project proposal draft', completed: false },
-        { id: 'c2', text: 'Meditate 4 times this week', completed: true },
-    ];
-    const exampleHappyHours: ChallengeItem[] = [
-        { id: 'h1', text: 'Finished a great book chapter', completed: false },
-        { id: 'h2', text: 'Had a fun dinner with friends', completed: false },
-    ];
-
     return {
         weekNum: 1,
-        scoreboard: scoreboardWithExamples,
-        challenges: exampleChallenges, 
-        happyHours: exampleHappyHours,
+        scoreboard: [],
+        challenges: [],
+        happyHours: [],
     };
 };
 
@@ -110,19 +79,23 @@ interface DashboardProps {
     weekNumber: number;
     setWeekNumber: (n: number) => void;
     user?: any; // Supabase user object
+    language?: Language;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
     weekNumber, 
     setWeekNumber,
     user,
+    language = 'en',
 }) => {
     // =======================================================
     // ✅ 3. 内部状态定义
     // =======================================================
-    const [year] = useState(2026);
+    // 动态年份：week 52是2025年，week 1-51是2026年
+    const year = weekNumber === 52 ? 2025 : 2026;
     const [dateRange, setDateRange] = useState('');
     const [isEditingScoreboard, setIsEditingScoreboard] = useState(false);
+    const [showScoreboardQuickAdd, setShowScoreboardQuickAdd] = useState(true);
     
     // 核心状态：存储所有周的数据
     const [allWeeksData, setAllWeeksData] = useState<WeeklyData[]>(defaultAllWeeksData);
@@ -130,6 +103,24 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     const [newChallenge, setNewChallenge] = useState('');
     const [newHappyHour, setNewHappyHour] = useState('');
+    const [editingChallengeId, setEditingChallengeId] = useState<string | null>(null);
+    const [editingChallengeText, setEditingChallengeText] = useState('');
+    const [editingHappyHourId, setEditingHappyHourId] = useState<string | null>(null);
+    const [editingHappyHourText, setEditingHappyHourText] = useState('');
+    const [deferredTaskText, setDeferredTaskText] = useState<string | null>(null);
+
+    // Modal 状态
+    const [modalState, setModalState] = useState<{
+        isOpen: boolean;
+        type: 'info' | 'warning' | 'success' | 'confirm';
+        title?: string;
+        message: string;
+        onConfirm?: () => void;
+    }>({
+        isOpen: false,
+        type: 'info',
+        message: '',
+    });
 
     // 辅助函数：同步所有周数据到云端
     const syncAllWeeksToCloud = useCallback(async (weeksData: WeeklyData[], userId: string) => {
@@ -367,6 +358,41 @@ const Dashboard: React.FC<DashboardProps> = ({
         }));
     };
 
+    const handleCopyFromLastWeek = () => {
+        const lastWeekNum = weekNumber - 1;
+        if (lastWeekNum < 1) {
+            setModalState({
+                isOpen: true,
+                type: 'warning',
+                message: language === 'en' ? 'No previous week available' : '没有上一周的数据',
+            });
+            return;
+        }
+
+        const lastWeekData = allWeeksData.find(d => d.weekNum === lastWeekNum);
+        if (!lastWeekData || !lastWeekData.scoreboard || lastWeekData.scoreboard.length === 0) {
+            setModalState({
+                isOpen: true,
+                type: 'warning',
+                message: language === 'en' ? 'No goals found in last week' : '上周没有找到目标设置',
+            });
+            return;
+        }
+
+        // 复制上周的scoreboard设置（Goal、Normal、Silver、Golden、Max、Unit），但重置进度
+        const copiedScoreboard = lastWeekData.scoreboard.map(item => ({
+            ...item,
+            id: Date.now().toString() + Math.random().toString(), // 生成新ID
+            current: 0, // 重置当前进度
+            lastWeek: 0, // 重置上周数据
+        }));
+
+        updateCurrentWeekData(data => ({
+            ...data,
+            scoreboard: copiedScoreboard
+        }));
+    };
+
     const handleAddScoreboardItem = () => {
         const newItem: ScoreboardItem = {
             id: Date.now().toString(),
@@ -386,12 +412,18 @@ const Dashboard: React.FC<DashboardProps> = ({
     };
 
     const handleDeleteScoreboardItem = (id: string) => {
-        if(window.confirm('Delete this goal?')) {
-            updateCurrentWeekData(data => ({
-                ...data,
-                scoreboard: data.scoreboard.filter(item => item.id !== id)
-            }));
-        }
+        setModalState({
+            isOpen: true,
+            type: 'confirm',
+            title: language === 'en' ? 'Delete Goal' : '删除目标',
+            message: language === 'en' ? 'Are you sure you want to delete this goal?' : '确定要删除这个目标吗？',
+            onConfirm: () => {
+                updateCurrentWeekData(data => ({
+                    ...data,
+                    scoreboard: data.scoreboard.filter(item => item.id !== id)
+                }));
+            }
+        });
     };
 
     // --- Challenge Handlers ---
@@ -422,39 +454,71 @@ const Dashboard: React.FC<DashboardProps> = ({
         }));
     };
     
+    const onEditChallenge = (id: string, text: string) => {
+        setEditingChallengeId(id);
+        setEditingChallengeText(text);
+    };
+    
+    const onSaveChallenge = () => {
+        if (!editingChallengeId || !editingChallengeText.trim()) return;
+        updateCurrentWeekData(data => ({
+            ...data,
+            challenges: data.challenges.map(c => 
+                c.id === editingChallengeId ? { ...c, text: editingChallengeText } : c
+            )
+        }));
+        setEditingChallengeId(null);
+        setEditingChallengeText('');
+    };
+    
     const onDeferChallenge = (id: string) => {
         const challengeToDefer = challenges.find(c => c.id === id);
         if (!challengeToDefer) return;
 
-        // 1. 从当前周删除
-        updateCurrentWeekData(data => ({
-            ...data,
-            challenges: data.challenges.filter(c => c.id !== id)
-        }));
-
-        // 2. 添加到下一周 (weekNumber + 1)
         const nextWeekNum = weekNumber + 1;
+        
+        // 显示rollover提示
+        setDeferredTaskText(challengeToDefer.text);
+        setTimeout(() => setDeferredTaskText(null), 3000);
 
+        // 一次性更新：从当前周删除，添加到下一周
         setAllWeeksData(prev => {
+            // 找到当前周和下一周的数据
+            const currentWeekData = prev.find(d => d.weekNum === weekNumber);
             let nextWeekData = prev.find(d => d.weekNum === nextWeekNum);
-            // 过滤掉当前周的数据，因为上面已经修改过了
-            let updatedPrev = prev.filter(d => d.weekNum !== nextWeekNum && d.weekNum !== weekNumber);
-            // 将更新后的当前周数据重新插入
-            const currentData = prev.find(d => d.weekNum === weekNumber);
-            if (currentData) {
-                 updatedPrev.push(currentData);
-            }
-
-            // 如果下一周数据不存在，先创建它 (使用当前周数据进行继承)
-            if (!nextWeekData) {
-                nextWeekData = createDefaultWeekData(nextWeekNum, currentData);
-            }
             
-            // 添加延期的 Challenge
-            nextWeekData.challenges = [...nextWeekData.challenges, { ...challengeToDefer, completed: false }];
+            if (!currentWeekData) return prev;
 
-            // 返回新的 allWeeksData
-            return [...updatedPrev, nextWeekData].sort((a, b) => a.weekNum - b.weekNum);
+            // 从当前周删除该 challenge
+            const updatedCurrentWeekData = {
+                ...currentWeekData,
+                challenges: currentWeekData.challenges.filter(c => c.id !== id)
+            };
+
+            // 如果下一周数据不存在，先创建它
+            if (!nextWeekData) {
+                nextWeekData = createDefaultWeekData(nextWeekNum, currentWeekData);
+            }
+
+            // 添加延期的 Challenge 到下一周（重置为未完成状态）
+            const updatedNextWeekData = {
+                ...nextWeekData,
+                challenges: [...nextWeekData.challenges, { ...challengeToDefer, id: Date.now().toString(), completed: false }]
+            };
+
+            // 更新数据数组
+            const result = prev.map(d => {
+                if (d.weekNum === weekNumber) return updatedCurrentWeekData;
+                if (d.weekNum === nextWeekNum) return updatedNextWeekData;
+                return d;
+            });
+
+            // 如果下一周原本不存在，需要添加进去
+            if (!prev.find(d => d.weekNum === nextWeekNum)) {
+                result.push(updatedNextWeekData);
+            }
+
+            return result.sort((a, b) => a.weekNum - b.weekNum);
         });
     };
 
@@ -476,6 +540,23 @@ const Dashboard: React.FC<DashboardProps> = ({
             happyHours: data.happyHours.filter(c => c.id !== id)
         }));
     };
+    
+    const onEditHappyHour = (id: string, text: string) => {
+        setEditingHappyHourId(id);
+        setEditingHappyHourText(text);
+    };
+    
+    const onSaveHappyHour = () => {
+        if (!editingHappyHourId || !editingHappyHourText.trim()) return;
+        updateCurrentWeekData(data => ({
+            ...data,
+            happyHours: data.happyHours.map(c => 
+                c.id === editingHappyHourId ? { ...c, text: editingHappyHourText } : c
+            )
+        }));
+        setEditingHappyHourId(null);
+        setEditingHappyHourText('');
+    };
 
     // 分数计算 (现在保证 scoreboard 是一个数组)
     const currentTotalScore = scoreboard.reduce((acc, item) => acc + getPoints(item.current, item.max), 0);
@@ -484,7 +565,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
 
     if (!isLoaded) {
-        return <div className="p-4 text-center text-slate-500">Loading Dashboard...</div>;
+        return <div className="p-4 text-center text-slate-500">{language === 'en' ? 'Loading...' : '加载中...'}</div>;
     }
 
 
@@ -492,6 +573,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     // ✅ 9. JSX 结构
     // =======================================================
     return (
+        <>
         <div className="p-2 md:p-4 max-w-7xl mx-auto h-[calc(100vh-2rem)] flex flex-col animate-fade-in">
             
             {/* Main Paper Container */}
@@ -502,16 +584,68 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div>
                         <div className="flex items-center gap-3 mb-1.5">
                             <span className="px-2 py-0.5 rounded-full bg-slate-900 text-white text-[9px] font-bold tracking-widest uppercase">
-                                Weekly Review
+                                {language === 'en' ? 'Weekly Review' : '每周回顾'}
                             </span>
                             <div className="h-px w-8 bg-slate-900/20"></div>
                         </div>
-                        <div className="flex items-baseline gap-3">
-                            <h2 className="font-serif text-2xl md:text-3xl text-slate-900 tracking-tight">Week {weekNumber}</h2>
-                            <div className="flex bg-white border border-slate-200 rounded-md p-0.5 shadow-sm">
-                                {/* 解决不能左右切换的问题：确保 setWeekNumber 被正确调用 */}
-                                <button onClick={() => setWeekNumber(Math.max(1, weekNumber - 1))} className="p-0.5 hover:bg-slate-50 rounded text-slate-500"><ChevronLeft size={12}/></button>
-                                <button onClick={() => setWeekNumber(Math.min(52, weekNumber + 1))} className="p-0.5 hover:bg-slate-50 rounded text-slate-500"><ChevronRight size={12}/></button>
+                        <div className="flex items-baseline justify-between w-full">
+                            <div className="flex items-baseline gap-3">
+                                <h2 className="font-serif text-2xl md:text-3xl text-slate-900 tracking-tight min-w-[120px]">Week {weekNumber}</h2>
+                                <div className="flex items-center gap-1.5">
+                                    <div className="flex bg-white border border-slate-200 rounded-md p-0.5 shadow-sm">
+                                        {/* 支持2025年week52-53和2026年week1-52的切换 */}
+                                        <button 
+                                            onClick={() => {
+                                                if (weekNumber === 1) {
+                                                    setWeekNumber(53); // 从2026 week1往前到2025 week53
+                                                } else {
+                                                    setWeekNumber(weekNumber - 1);
+                                                }
+                                            }} 
+                                            className="p-0.5 hover:bg-slate-50 rounded text-slate-500"
+                                        >
+                                            <ChevronLeft size={12}/>
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                if (weekNumber === 53) {
+                                                    setWeekNumber(1); // 从2025 week53往后到2026 week1
+                                                } else if (weekNumber === 52) {
+                                                    setWeekNumber(53); // 2025 week52 -> week53
+                                                } else {
+                                                    setWeekNumber(Math.min(52, weekNumber + 1)); // 2026年最多到52周
+                                                }
+                                            }} 
+                                            className="p-0.5 hover:bg-slate-50 rounded text-slate-500"
+                                        >
+                                            <ChevronRight size={12}/>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <button 
+                                    onClick={() => setWeekNumber(getCurrentWeekNumber())}
+                                    disabled={weekNumber === getCurrentWeekNumber()}
+                                    className={`p-1 rounded-md transition-colors ${
+                                        weekNumber === getCurrentWeekNumber() 
+                                            ? 'text-slate-300 cursor-default' 
+                                            : 'text-slate-400 hover:bg-blue-50 hover:text-blue-600'
+                                    }`}
+                                    title={language === 'en' ? 'Go to current week' : '回到当前周'}
+                                >
+                                    <Target size={12}/>
+                                </button>
+                                <span className={`text-[9px] font-light whitespace-nowrap ${
+                                    weekNumber === getCurrentWeekNumber() 
+                                        ? 'text-slate-300 italic' 
+                                        : 'text-slate-400'
+                                }`}>
+                                    {weekNumber === getCurrentWeekNumber() 
+                                        ? (language === 'en' ? 'Current week' : '本周')
+                                        : (language === 'en' ? 'Back to current' : '回到本周')
+                                    }
+                                </span>
                             </div>
                         </div>
                         <p className="text-slate-500 font-mono text-[10px] mt-0.5">{dateRange} · {year}</p>
@@ -521,52 +655,143 @@ const Dashboard: React.FC<DashboardProps> = ({
                 {/* Scoreboard */}
                 <div className="mb-6">
                     <div className="flex justify-between items-center mb-3">
-                        <div className="flex items-center gap-4">
-                            <h3 className="font-serif text-lg text-slate-900">Scoreboard</h3>
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <h3 className="font-serif text-lg text-slate-900">{language === 'en' ? 'Scoreboard' : '计分板'}</h3>
                             {/* Trend Summary */}
                             <div className="hidden sm:flex items-center gap-2 px-2 py-1 bg-slate-50 rounded-lg border border-slate-100">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Score:</span>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{language === 'en' ? 'Total:' : '总分:'}</span>
                                 <span className="font-serif font-bold text-slate-900">{currentTotalScore}</span>
                                 <div className={`flex items-center text-[10px] font-medium ${scoreDiff >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                                     {scoreDiff > 0 ? <TrendingUp size={12} className="mr-0.5"/> : scoreDiff < 0 ? <TrendingDown size={12} className="mr-0.5"/> : <Minus size={12} className="mr-0.5"/>}
-                                    {Math.abs(scoreDiff)} vs last week
+                                    {Math.abs(scoreDiff)} {language === 'en' ? 'vs last week' : '相比上周'}
                                 </div>
                             </div>
+                            {isEditingScoreboard && (
+                                <button
+                                    onClick={() => setShowScoreboardQuickAdd(!showScoreboardQuickAdd)}
+                                    className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${
+                                        showScoreboardQuickAdd 
+                                            ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                                            : 'bg-slate-100 text-slate-600 border border-slate-200 hover:bg-slate-200'
+                                    }`}
+                                    title={language === 'en' ? 'Toggle quick add' : '切换快速添加'}
+                                >
+                                    <Lightbulb size={14} />
+                                    <span>{language === 'en' ? 'Ideas' : '灵感'}</span>
+                                </button>
+                            )}
                         </div>
                         
                         <div className="flex gap-2">
                             <button 
+                                onClick={handleCopyFromLastWeek}
+                                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                                title={language === 'en' ? 'Copy from last week' : '从上周复制设置'}
+                            >
+                                <Copy size={14} />
+                            </button>
+                            <button 
                                 onClick={handleResetScoreboard}
                                 className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
-                                title="Reset All Progress"
+                                title={language === 'en' ? 'Reset progress' : '重置进度'}
                             >
                                 <RotateCcw size={14} />
                             </button>
                             <button 
                                 onClick={() => setIsEditingScoreboard(!isEditingScoreboard)}
                                 className={`p-1.5 rounded-md transition-colors flex items-center gap-1.5 ${isEditingScoreboard ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-100'}`}
-                                title={isEditingScoreboard ? "Save Changes" : "Edit Goals"}
+                                title={isEditingScoreboard ? (language === 'en' ? 'Save changes' : '保存修改') : (language === 'en' ? 'Edit goals' : '编辑目标')}
                             >
                                 {isEditingScoreboard ? <Save size={14} /> : <Edit2 size={14} />}
-                                {isEditingScoreboard && <span className="text-[10px] font-bold uppercase tracking-wider pr-1">Save</span>}
+                                {isEditingScoreboard && <span className="text-[10px] font-bold uppercase tracking-wider pr-1">{language === 'en' ? 'Save' : '保存'}</span>}
                             </button>
                         </div>
                     </div>
 
+                    {/* Quick Add Suggestions - Only show in edit mode */}
+                    {isEditingScoreboard && showScoreboardQuickAdd && (
+                        <div className="mb-4 p-4 bg-slate-50 rounded-lg border border-slate-200 relative">
+                            <button
+                                onClick={() => setShowScoreboardQuickAdd(false)}
+                                className="absolute top-2 right-2 text-slate-400 hover:text-slate-900 transition-colors"
+                                title={language === 'en' ? 'Close' : '关闭'}
+                            >
+                                <X size={14} />
+                            </button>
+                            <p className="text-xs text-slate-600 mb-3 font-medium">
+                                {language === 'en' ? '💡 Quick add goals:' : '💡 快速添加目标：'}
+                            </p>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {(language === 'en' ? [
+                                    { goal: 'Study hours', normal: '2h', silver: '4h', golden: '6h', max: 10, unit: 'h' },
+                                    { goal: 'Exercise', normal: '2 times', silver: '3 times', golden: '4 times', max: 7, unit: '' },
+                                    { goal: 'Reading', normal: '30min', silver: '1h', golden: '2h', max: 5, unit: 'h' },
+                                    { goal: 'Water intake', normal: '6 cups', silver: '8 cups', golden: '10 cups', max: 15, unit: '' },
+                                    { goal: 'Sleep quality', normal: '6h', silver: '7h', golden: '8h', max: 12, unit: 'h' },
+                                    { goal: 'Social time', normal: '1 meetup', silver: '2 meetups', golden: '3 meetups', max: 5, unit: '' },
+                                ] : [
+                                    { goal: '学习时长', normal: '2小时', silver: '4小时', golden: '6小时', max: 10, unit: '小时' },
+                                    { goal: '运动次数', normal: '2次', silver: '3次', golden: '4次', max: 7, unit: '次' },
+                                    { goal: '阅读时长', normal: '30分钟', silver: '1小时', golden: '2小时', max: 5, unit: '小时' },
+                                    { goal: '喝水量', normal: '6杯', silver: '8杯', golden: '10杯', max: 15, unit: '杯' },
+                                    { goal: '睡眠时长', normal: '6小时', silver: '7小时', golden: '8小时', max: 12, unit: '小时' },
+                                    { goal: '社交活动', normal: '1次', silver: '2次', golden: '3次', max: 5, unit: '次' },
+                                ]).map((suggestion, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => {
+                                            const newItem: ScoreboardItem = {
+                                                id: Date.now().toString() + Math.random(),
+                                                goal: suggestion.goal,
+                                                normal: suggestion.normal,
+                                                silver: suggestion.silver,
+                                                golden: suggestion.golden,
+                                                max: suggestion.max,
+                                                unit: suggestion.unit,
+                                                current: 0,
+                                                lastWeek: 0,
+                                            };
+                                            updateCurrentWeekData(data => ({
+                                                ...data,
+                                                scoreboard: [...data.scoreboard, newItem]
+                                            }));
+                                        }}
+                                        className="text-left px-3 py-2 bg-white border border-slate-300 hover:border-slate-900 hover:bg-slate-900 hover:text-white rounded-lg text-xs transition-all group"
+                                    >
+                                        <div className="font-medium">{suggestion.goal}</div>
+                                        <div className="text-[9px] opacity-60 group-hover:opacity-90 mt-0.5">
+                                            {suggestion.normal} → {suggestion.silver} → {suggestion.golden}
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+                        {scoreboard.length === 0 ? (
+                            <div className="text-center py-8 px-4">
+                                <p className="text-sm text-slate-400 font-light mb-2">
+                                    {language === 'en' ? 'No goals set yet' : '还没有设置目标'}
+                                </p>
+                                <p className="text-[10px] text-slate-300">
+                                    {language === 'en' ? 'Click edit button to add your weekly goals' : '点击编辑按钮开始添加你的weekly goals'}
+                                </p>
+                            </div>
+                        ) : (
                         <div className="overflow-x-auto w-full">
                         <table className="w-full text-sm text-left min-w-[600px]">
                             <thead>
                             <tr className="text-slate-400 font-mono text-[9px] uppercase tracking-wider border-b border-slate-100">
-                                <th className="py-2 px-3 font-normal">Goal</th>
-                                <th className="py-2 px-3 font-normal">Normal (1pt)</th>
-                                <th className="py-2 px-3 font-normal">Silver (2pts)</th>
-                                <th className="py-2 px-3 font-normal">Golden (3pts)</th>
+                                <th className="py-2 px-3 font-normal">{language === 'en' ? 'Goal' : '目标'}</th>
+                                <th className="py-2 px-3 font-normal">{language === 'en' ? 'Normal (1pt)' : '及格 (1分)'}</th>
+                                <th className="py-2 px-3 font-normal">{language === 'en' ? 'Silver (2pts)' : '良好 (2分)'}</th>
+                                <th className="py-2 px-3 font-normal">{language === 'en' ? 'Golden (3pts)' : '优秀 (3分)'}</th>
                                 <th className="py-2 px-3 font-normal">
-                                    {isEditingScoreboard ? 'Max / Unit' : 'Progress'}
+                                    {isEditingScoreboard ? (language === 'en' ? 'Max / Unit' : '上限/单位') : (language === 'en' ? 'Progress' : '进度')}
                                 </th>
                                 <th className="py-2 px-3 font-normal text-center w-16">
-                                    {isEditingScoreboard ? 'Action' : 'Score'}
+                                    {isEditingScoreboard ? (language === 'en' ? 'Action' : '操作') : (language === 'en' ? 'Score' : '分数')}
                                 </th>
                             </tr>
                             </thead>
@@ -631,14 +856,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                                                 value={item.max} 
                                                 onChange={(e) => handleScoreboardEdit(item.id, 'max', Number(e.target.value))}
                                                 className="w-12 bg-white border border-slate-200 rounded px-1.5 py-1 text-[10px] focus:ring-1 focus:ring-slate-400 outline-none"
-                                                placeholder="Max"
+                                                placeholder={language === 'en' ? 'Max' : '上限'}
                                             />
                                             <input 
                                                 type="text" 
                                                 value={item.unit} 
                                                 onChange={(e) => handleScoreboardEdit(item.id, 'unit', e.target.value)}
                                                 className="w-8 bg-white border border-slate-200 rounded px-1.5 py-1 text-[10px] focus:ring-1 focus:ring-slate-400 outline-none"
-                                                placeholder="Unit"
+                                                placeholder={language === 'en' ? 'Unit' : '单位'}
                                             />
                                         </div>
                                     ) : (
@@ -663,7 +888,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         <button 
                                             onClick={() => handleDeleteScoreboardItem(item.id)}
                                             className="p-1 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                                            title="Delete Goal"
+                                            title={language === 'en' ? 'Delete goal' : '删除目标'}
                                         >
                                             <Trash2 size={12} />
                                         </button>
@@ -678,6 +903,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                             </tbody>
                         </table>
                         </div>
+                        )}
                         
                         {/* Add Button Area in Edit Mode */}
                         {isEditingScoreboard && (
@@ -686,7 +912,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                     onClick={handleAddScoreboardItem}
                                     className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:border-slate-300 px-3 py-1.5 rounded-lg shadow-sm transition-all"
                                 >
-                                    <Plus size={14} /> Add Goal
+                                    <Plus size={14} /> {language === 'en' ? 'Add Goal' : '添加目标'}
                                 </button>
                             </div>
                         )}
@@ -699,23 +925,60 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-sm flex flex-col h-auto relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-1 h-full bg-orange-200"></div>
                         <div className="flex justify-between items-center mb-3">
-                            <h3 className="font-serif text-base text-slate-900">Weekly Challenges</h3>
+                            <h3 className="font-serif text-base text-slate-900">{language === 'en' ? 'One Thing to Try This Week' : '本周想尝试的一件事'}</h3>
                         </div>
                         
                         <div className="space-y-2 mb-3 flex-1">
-                            {challenges.length === 0 && <p className="text-[10px] text-slate-400 font-light italic">No challenges for this week.</p>}
+                            {challenges.length === 0 && (
+                                <div className="text-center py-4">
+                                    <p className="text-[10px] text-slate-400 font-light">
+                                        {language === 'en' ? 'Anything fun to try this week? 💪' : '本周有什么想要尝试的有趣事情吗?'}
+                                    </p>
+                                    <p className="text-[9px] text-slate-300 mt-1">
+                                        💡 {language === 'en' ? 'Click' : '可以点击'} <CalendarClock className="inline" size={10}/> {language === 'en' ? 'to delay to next week' : '延迟到下周'}
+                                    </p>
+                                </div>
+                            )}
+                            {deferredTaskText && (
+                                <div className="py-2.5 px-4 bg-slate-50/50 border-l-2 border-slate-300 rounded-lg animate-fade-in mb-3 shadow-sm">
+                                    <p className="text-[9px] text-slate-500 font-light italic tracking-wide">
+                                        {language === 'en' ? 'Unfinished tasks can be rolled over with one click.' : '未完成的任务可以一键延期。'}
+                                    </p>
+                                </div>
+                            )}
                             {challenges.map(c => (
                                 <div key={c.id} className="flex items-start justify-between group">
-                                    <div className="flex items-start gap-2">
-                                        <button onClick={() => onToggleChallenge(c.id)} className="mt-0.5 text-slate-400 hover:text-slate-900 transition-colors">
-                                            {c.completed ? <CheckSquare size={14} className="text-slate-900"/> : <Square size={14}/>}
-                                        </button>
-                                        <span className={`text-xs leading-snug ${c.completed ? 'line-through text-slate-300' : 'text-slate-700'}`}>{c.text}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
-                                        <button onClick={() => onDeferChallenge(c.id)} className="p-1 text-slate-400 hover:text-blue-500 rounded-md transition-colors" title="Defer to next week"><CalendarClock size={12}/></button>
-                                        <button onClick={() => onDeleteChallenge(c.id)} className="p-1 text-slate-400 hover:text-red-500 rounded-md transition-colors" title="Delete"><Trash2 size={12}/></button>
-                                    </div>
+                                    {editingChallengeId === c.id ? (
+                                        <div className="flex-1 flex items-center gap-2">
+                                            <input
+                                                type="text"
+                                                value={editingChallengeText}
+                                                onChange={(e) => setEditingChallengeText(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') onSaveChallenge();
+                                                    if (e.key === 'Escape') setEditingChallengeId(null);
+                                                }}
+                                                className="flex-1 bg-white border border-slate-300 text-xs px-2 py-1 rounded-md outline-none focus:ring-2 focus:ring-slate-400"
+                                                autoFocus
+                                            />
+                                            <button onClick={onSaveChallenge} className="p-1 text-slate-400 hover:text-green-600 rounded-md transition-colors" title={language === 'en' ? 'Save' : '保存'}><Save size={12}/></button>
+                                            <button onClick={() => setEditingChallengeId(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded-md transition-colors" title={language === 'en' ? 'Cancel' : '取消'}><Minus size={12}/></button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="flex items-start gap-2 flex-1">
+                                                <button onClick={() => onToggleChallenge(c.id)} className="mt-0.5 text-slate-400 hover:text-slate-900 transition-colors">
+                                                    {c.completed ? <CheckSquare size={14} className="text-slate-900"/> : <Square size={14}/>}
+                                                </button>
+                                                <span className={`text-xs leading-snug ${c.completed ? 'line-through text-slate-300' : 'text-slate-700'}`}>{c.text}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                                                <button onClick={() => onEditChallenge(c.id, c.text)} className="p-1 text-slate-400 hover:text-slate-900 rounded-md transition-colors" title={language === 'en' ? 'Edit' : '编辑'}><Edit2 size={12}/></button>
+                                                <button onClick={() => onDeferChallenge(c.id)} className="p-1 text-slate-400 hover:text-blue-500 rounded-md transition-colors" title={language === 'en' ? 'Defer to next week' : '推迟到下周'}><CalendarClock size={12}/></button>
+                                                <button onClick={() => onDeleteChallenge(c.id)} className="p-1 text-slate-400 hover:text-red-500 rounded-md transition-colors" title={language === 'en' ? 'Delete' : '删除'}><Trash2 size={12}/></button>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -726,7 +989,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 value={newChallenge}
                                 onChange={(e) => setNewChallenge(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleAddChallenge()}
-                                placeholder="Add a challenge..."
+                                placeholder={language === 'en' ? "Is there something you are curious to try this week?" : "本周想挑战什么？"}
                                 className="flex-1 bg-slate-50 text-[10px] px-2 py-1.5 rounded-md outline-none focus:ring-1 focus:ring-slate-200 placeholder:text-slate-400"
                             />
                             <button onClick={handleAddChallenge} className="bg-slate-900 text-white p-1.5 rounded-md hover:bg-slate-700 transition-colors"><Plus size={12}/></button>
@@ -737,18 +1000,47 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-sm flex flex-col h-auto relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-1 h-full bg-amber-200"></div>
                         <div className="flex justify-between items-center mb-3">
-                            <h3 className="font-serif text-base text-slate-900">Happy Hour Tracker</h3>
+                            <h3 className="font-serif text-base text-slate-900">{language === 'en' ? 'Happy Hours' : '记录本周的美好瞬间'}</h3>
                         </div>
 
                         <div className="space-y-2 mb-3 flex-1">
-                            {happyHours.length === 0 && <p className="text-[10px] text-slate-400 font-light italic">No happy moments recorded.</p>}
+                            {happyHours.length === 0 && (
+                                <div className="text-center py-4">
+                                    <p className="text-[10px] text-slate-400 font-light">
+                                        {language === 'en' ? 'Capture the little things that felt good this week ✨' : '记录这周的美好时刻 ✨'}
+                                    </p>
+                                </div>
+                            )}
                             {happyHours.map(c => (
                                 <div key={c.id} className="flex items-center justify-between group">
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-1 h-1 rounded-full bg-amber-400 shrink-0"></div>
-                                        <span className="text-xs text-slate-700">{c.text}</span>
-                                    </div>
-                                    <button onClick={() => deleteHappyHour(c.id)} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 p-1 transition-opacity"><Trash2 size={10}/></button>
+                                    {editingHappyHourId === c.id ? (
+                                        <div className="flex-1 flex items-center gap-2">
+                                            <input
+                                                type="text"
+                                                value={editingHappyHourText}
+                                                onChange={(e) => setEditingHappyHourText(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') onSaveHappyHour();
+                                                    if (e.key === 'Escape') setEditingHappyHourId(null);
+                                                }}
+                                                className="flex-1 bg-white border border-slate-300 text-xs px-2 py-1 rounded-md outline-none focus:ring-2 focus:ring-slate-400"
+                                                autoFocus
+                                            />
+                                            <button onClick={onSaveHappyHour} className="p-1 text-slate-400 hover:text-green-600 rounded-md transition-colors" title={language === 'en' ? 'Save' : '保存'}><Save size={12}/></button>
+                                            <button onClick={() => setEditingHappyHourId(null)} className="p-1 text-slate-400 hover:text-slate-600 rounded-md transition-colors" title={language === 'en' ? 'Cancel' : '取消'}><Minus size={12}/></button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="flex items-center gap-2 flex-1">
+                                                <div className="w-1 h-1 rounded-full bg-amber-400 shrink-0"></div>
+                                                <span className="text-xs text-slate-700">{c.text}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button onClick={() => onEditHappyHour(c.id, c.text)} className="p-1 text-slate-400 hover:text-slate-900 rounded-md transition-colors" title={language === 'en' ? 'Edit' : '编辑'}><Edit2 size={10}/></button>
+                                                <button onClick={() => deleteHappyHour(c.id)} className="p-1 text-slate-400 hover:text-red-500 rounded-md transition-colors" title={language === 'en' ? 'Delete' : '删除'}><Trash2 size={10}/></button>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -759,7 +1051,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 value={newHappyHour}
                                 onChange={(e) => setNewHappyHour(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && addHappyHour()}
-                                placeholder="Add happy moment..."
+                                placeholder={language === 'en' ? "What made you happy?" : "有什么开心的事？"}
                                 className="flex-1 bg-slate-50 text-[10px] px-2 py-1.5 rounded-md outline-none focus:ring-1 focus:ring-slate-200 placeholder:text-slate-400"
                             />
                             <button onClick={addHappyHour} className="bg-slate-900 text-white p-1.5 rounded-md hover:bg-slate-700 transition-colors"><Plus size={12}/></button>
@@ -768,6 +1060,19 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
             </div>
         </div>
+
+        {/* Modal */}
+        <Modal
+            isOpen={modalState.isOpen}
+            onClose={() => setModalState({ ...modalState, isOpen: false })}
+            type={modalState.type}
+            title={modalState.title}
+            message={modalState.message}
+            onConfirm={modalState.onConfirm}
+            confirmText={language === 'en' ? 'OK' : '确定'}
+            cancelText={language === 'en' ? 'Cancel' : '取消'}
+        />
+        </>
     );
 };
 

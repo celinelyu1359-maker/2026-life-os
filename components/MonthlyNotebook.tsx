@@ -24,8 +24,14 @@ interface MonthlyNotebookProps {
     onDeferGoal: (id: string) => void;
 }
 
-const monthsEn = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const monthsZh = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+const monthsEn = ['December', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const monthsZh = ['十二月', '一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+
+// 获取实际年份和月份（处理跨年）
+const getActualYearAndMonth = (index: number): { year: number; month: number } => {
+    if (index === 0) return { year: 2025, month: 11 }; // 2025年12月 (11 is December in 0-indexed)
+    return { year: 2026, month: index - 1 }; // 2026年1-12月
+};
 
 const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({ 
     navigateToWeek, 
@@ -53,6 +59,7 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
   const [newGoalText, setNewGoalText] = useState('');
   const [isAddingGoal, setIsAddingGoal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [deferredGoalText, setDeferredGoalText] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // --- LocalStorage Logic ---
@@ -86,7 +93,8 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
 
   // Generate weeks when month changes
   useEffect(() => {
-    setWeeks(getWeeksInMonth(2026, currentMonthIndex, language));
+    const { year, month } = getActualYearAndMonth(currentMonthIndex);
+    setWeeks(getWeeksInMonth(year, month, language));
   }, [currentMonthIndex, language]);
 
   // Scroll active tab into view
@@ -118,6 +126,11 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
   };
 
   const deferGoal = (id: string) => {
+      const goalToDefer = goals.find(g => g.id === id);
+      if (goalToDefer) {
+          setDeferredGoalText(goalToDefer.text);
+          setTimeout(() => setDeferredGoalText(null), 3000);
+      }
       onDeferGoal(id);
   };
 
@@ -126,8 +139,9 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
   // Filter notes for current month AND search term
   const currentMonthNotes = notes.filter(n => {
       const d = new Date(n.date);
+      const { year, month } = getActualYearAndMonth(currentMonthIndex);
       // 注意：确保 n.date 是标准日期格式字符串
-      const isCurrentMonth = d.getMonth() === currentMonthIndex && d.getFullYear() === 2026;
+      const isCurrentMonth = d.getMonth() === month && d.getFullYear() === year;
       if (!isCurrentMonth) return false;
       
       if (!searchTerm) return true;
@@ -141,6 +155,7 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
 
   const months = language === 'en' ? monthsEn : monthsZh;
   const currentMonthName = months[currentMonthIndex];
+  const { year: currentYear } = getActualYearAndMonth(currentMonthIndex);
 
   // Translations
   const t = {
@@ -151,8 +166,8 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
       weeksTitle: language === 'en' ? 'Weekly Timeline' : '每周时间线',
       notesTitle: language === 'en' ? 'Field Notes' : '随笔与灵感',
       addGoal: language === 'en' ? 'Add Item' : '添加事项',
-      defer: language === 'en' ? 'Defer' : '推迟',
-      noGoals: language === 'en' ? 'No goals set for this month yet.' : '本月暂无目标。',
+      defer: language === 'en' ? 'Defer to next month' : '延迟到下月',
+      noGoals: language === 'en' ? 'What priorities do you have this month?' : '本月有什么优先需要考虑的事情？',
       noNotes: language === 'en' ? 'No notes yet.' : '暂无笔记。',
       openWeek: language === 'en' ? 'Open' : '打开',
       monthLabel: language === 'en' ? 'MONTH' : '月份',
@@ -169,9 +184,11 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
       >
         {months.map((m, idx) => {
             const isActive = currentMonthIndex === idx;
+            const { year, month } = getActualYearAndMonth(idx);
+            const monthNumber = idx === 0 ? 12 : idx; // Dec 2025 = 12, Jan 2026 = 1, etc.
             return (
                 <button
-                    key={m}
+                    key={`${year}-${m}`}
                     onClick={() => setCurrentMonthIndex(idx)}
                     className={`
                         relative rounded-t-xl text-xs font-medium transition-all duration-300 ease-out shrink-0
@@ -184,7 +201,7 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
                     }}
                 >
                     <span className={`uppercase tracking-wider text-[9px] opacity-50 ${isActive ? 'block mb-0.5' : ''}`}>
-                        {language === 'en' ? (idx + 1 < 10 ? `0${idx+1}` : idx+1) : `${idx+1}月`}
+                        {monthNumber}
                     </span>
                     <span className={isActive ? 'font-serif text-base font-bold' : ''}>
                         {language === 'zh' ? m.replace('月', '') : m.slice(0,3)}
@@ -216,7 +233,7 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
                 </div>
                 <div className="hidden md:block text-right">
                     <div className="text-[60px] leading-none font-serif text-slate-900/5 select-none pointer-events-none">
-                        2026
+                        {currentYear}
                     </div>
                 </div>
             </div>
@@ -268,6 +285,16 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
                          )}
                     </div>
 
+                    {deferredGoalText && (
+                        <div className="mb-3 py-2.5 px-4 bg-blue-50/50 border-l-2 border-blue-300 rounded-lg animate-fade-in shadow-sm">
+                            <p className="text-[9px] text-blue-600 font-light italic tracking-wide">
+                                {language === 'en' 
+                                    ? `"${deferredGoalText}" has been moved to next month.` 
+                                    : `「${deferredGoalText}」已移动到下个月。`}
+                            </p>
+                        </div>
+                    )}
+
                     <div className="space-y-1">
                         {displayGoals.length === 0 && !isAddingGoal && (
                             <div className="py-4 text-center bg-white/50 border border-dashed border-slate-200 rounded-xl">
@@ -303,7 +330,7 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
                                     onChange={e => setNewGoalText(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleAddGoal()}
                                     className="flex-1 bg-transparent text-sm font-light placeholder:text-slate-300 border-none outline-none focus:ring-0"
-                                    placeholder={language === 'en' ? "What matters this month?" : "这个月重要的是什么？"}
+                                    placeholder={language === 'en' ? "What's a priority this month?" : "本月有什么优先要关注的？"}
                                 />
                                 <button onClick={handleAddGoal} className="bg-slate-900 text-white p-1 rounded-lg hover:bg-slate-700">
                                     <Plus size={12}/>

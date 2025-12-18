@@ -1,4 +1,4 @@
-export type View = 'dashboard' | 'annual' | 'monthly' | 'reading';
+export type View = 'dashboard' | 'annual' | 'monthly' | 'reading' | 'privacy';
 export type Language = 'en' | 'zh';
 
 export interface ScoreboardItem {

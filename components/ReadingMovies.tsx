@@ -6,23 +6,14 @@ import { supabase, isSupabaseConfigured } from '../supabaseClient';
 // ✅ LocalStorage Key
 const READING_ITEMS_KEY = 'reading-movies-items-2026';
 
-// ✅ Default data for first launch
-const defaultItems: ReadingItem[] = [
-    { id: '1', title: 'Design Emergency', type: 'book', rating: 5, tags: ['Design', 'Art'], review: 'A fantastic overview of modern design.', dateFinished: '2025-10-15' },
-    { id: '2', title: 'Visible Signs', type: 'book', rating: 4, tags: ['Philosophy'], review: 'Deep and thoughtful exploration of visual language.', dateFinished: '2025-11-01' },
-    { id: '3', title: 'Optic', type: 'movie', rating: 5, tags: ['Sci-Fi'], review: 'Visual stunner, cinematography was top notch.', dateFinished: '2025-09-20' },
-    { id: '4', title: 'The Creative Act', type: 'book', rating: 5, tags: ['Creativity'], review: 'Rick Rubin is a master. Essential reading.', dateFinished: '2025-08-10' },
-    { id: '5', title: 'A Sense of Place', type: 'book', rating: 3, tags: ['Travel'], review: 'Okay but a bit slow paced for my taste.', dateFinished: '2025-12-05' },
-];
-
 interface ReadingMoviesProps {
     language: Language;
     user?: any; // Supabase user object
 }
 
 const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language, user }) => {
-  // ✅ State with default values
-  const [items, setItems] = useState<ReadingItem[]>(defaultItems);
+  // ✅ State with empty initial values to avoid flash
+  const [items, setItems] = useState<ReadingItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
   
   const [showAddModal, setShowAddModal] = useState(false);
@@ -318,7 +309,12 @@ const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language, user }) => {
             </div>
 
             {/* Gallery Grid */}
-            {filteredItems.length === 0 ? (
+            {!isLoaded ? (
+                <div className="py-12 text-center">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
+                    <p className="text-slate-400 text-xs mt-3">Loading...</p>
+                </div>
+            ) : filteredItems.length === 0 ? (
                  <div className="py-12 text-center border-2 border-dashed border-slate-200 rounded-xl">
                     <p className="text-slate-400 font-serif italic text-base">{t.noItems}</p>
                 </div>

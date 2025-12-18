@@ -1,5 +1,5 @@
-import React from 'react';
-import { LayoutDashboard, Settings, Calendar, BookOpen, PenSquare, Languages, LogOut, User } from 'lucide-react';
+import React, { useState } from 'react';
+import { LayoutDashboard, Settings, Calendar, BookOpen, PenSquare, Languages, LogOut, User, Download, MessageSquare, Edit2, Check, X } from 'lucide-react';
 import { View, Language } from '../types';
 
 interface SidebarProps {
@@ -11,6 +11,10 @@ interface SidebarProps {
   setLanguage: (l: Language) => void;
   user?: any;
   onLogout?: () => void;
+  onExportData?: () => void;
+  feedbackFormUrl?: string;
+  motto?: string;
+  onMottoChange?: (newMotto: string) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -21,8 +25,26 @@ const Sidebar: React.FC<SidebarProps> = ({
     language,
     setLanguage,
     user,
-    onLogout
+    onLogout,
+    onExportData,
+    feedbackFormUrl,
+    motto = 'Responsibility & Nutrition',
+    onMottoChange
 }) => {
+  const [isEditingMotto, setIsEditingMotto] = useState(false);
+  const [editedMotto, setEditedMotto] = useState(motto);
+
+  const handleSaveMotto = () => {
+    if (onMottoChange && editedMotto.trim()) {
+      onMottoChange(editedMotto.trim());
+    }
+    setIsEditingMotto(false);
+  };
+
+  const handleCancelMotto = () => {
+    setEditedMotto(motto);
+    setIsEditingMotto(false);
+  };
   const menuItems = [
     { id: 'dashboard', label: language === 'en' ? `Week ${currentWeek}` : `第 ${currentWeek} 周`, icon: LayoutDashboard },
     { id: 'annual', label: language === 'en' ? 'Annual Settings' : '年度设定', icon: Settings },
@@ -30,10 +52,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'reading', label: language === 'en' ? 'Reading & Movies' : '阅读观影', icon: BookOpen },
   ];
 
+  // 动态年份显示：week 52-53是2025年，week 1-51是2026年
+  const displayYear = currentWeek >= 52 ? 2025 : 2026;
+
   return (
     <div className="w-64 bg-[#f8fafc] h-screen fixed left-0 top-0 border-r border-slate-200 flex flex-col p-8 z-10 hidden md:flex font-serif">
       <div className="mb-12">
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">2026 LIFE OS</h1>
+        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{displayYear} LIFE OS</h1>
         <p className="text-[10px] font-mono text-slate-400 mt-2 leading-relaxed tracking-widest uppercase">
           {language === 'en' ? 'Annual Notebook' : '年度笔记本'}
         </p>
@@ -67,7 +92,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           ))}
         </nav>
 
-        <div className="mt-12 pl-4 pr-4">
+        <div className="mt-12 pl-4 pr-4 space-y-3">
             <button 
                 onClick={onOpenQuickNote}
                 className="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 hover:border-slate-400 text-slate-700 px-4 py-3 rounded-xl text-xs font-bold transition-all shadow-sm group hover:shadow-md"
@@ -75,6 +100,28 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <PenSquare size={16} className="text-slate-400 group-hover:text-slate-900 transition-colors" />
                 <span>{language === 'en' ? 'Quick Note' : '随手记'}</span>
             </button>
+            
+            {onExportData && (
+                <button 
+                    onClick={onExportData}
+                    className="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 hover:border-slate-400 text-slate-700 px-4 py-3 rounded-xl text-xs font-bold transition-all shadow-sm group hover:shadow-md"
+                >
+                    <Download size={16} className="text-slate-400 group-hover:text-slate-900 transition-colors" />
+                    <span>{language === 'en' ? 'Export Data' : '导出数据'}</span>
+                </button>
+            )}
+            
+            {feedbackFormUrl && (
+                <a
+                    href={feedbackFormUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center justify-center gap-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-100 px-4 py-3 rounded-xl text-xs font-medium transition-all shadow-sm"
+                >
+                    <MessageSquare size={16} className="text-slate-300" />
+                    <span>{language === 'en' ? 'Give Feedback' : '提供反馈'}</span>
+                </a>
+            )}
         </div>
       </div>
 
@@ -116,9 +163,69 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {language === 'en' ? 'ENGLISH' : '中文'}
             </button>
         </div>
-        <p className="text-[10px] text-slate-400 leading-relaxed font-mono">
-          2026 motto: <br/><span className="text-slate-600 font-medium">Responsibility</span> & <span className="text-slate-600 font-medium">Nutrition</span>
-        </p>
+        
+        {/* Motto Section */}
+        <div className="relative group">
+          {isEditingMotto ? (
+            <div className="space-y-2">
+              <label className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">
+                2026 {language === 'en' ? 'motto' : '座右铭'}:
+              </label>
+              <div className="flex gap-1">
+                <input
+                  type="text"
+                  value={editedMotto}
+                  onChange={(e) => setEditedMotto(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveMotto();
+                    if (e.key === 'Escape') handleCancelMotto();
+                  }}
+                  className="flex-1 text-[10px] px-2 py-1.5 bg-white border border-slate-300 rounded text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                  placeholder={language === 'en' ? 'Enter your motto...' : '输入你的座右铭...'}
+                  autoFocus
+                />
+                <button
+                  onClick={handleSaveMotto}
+                  className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
+                  title={language === 'en' ? 'Save' : '保存'}
+                >
+                  <Check size={12} />
+                </button>
+                <button
+                  onClick={handleCancelMotto}
+                  className="p-1.5 text-slate-400 hover:bg-slate-100 rounded transition-colors"
+                  title={language === 'en' ? 'Cancel' : '取消'}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="relative">
+              <p className="text-[10px] text-slate-400 leading-relaxed font-mono pr-6">
+                2026 {language === 'en' ? 'motto' : '座右铭'}: <br/>
+                <span className="text-slate-600 font-medium">{motto}</span>
+              </p>
+              {onMottoChange && (
+                <button
+                  onClick={() => setIsEditingMotto(true)}
+                  className="absolute top-0 right-0 p-1 text-slate-300 hover:text-slate-600 opacity-0 group-hover:opacity-100 transition-all hover:bg-slate-100 rounded"
+                  title={language === 'en' ? 'Edit motto' : '编辑座右铭'}
+                >
+                  <Edit2 size={10} />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        
+        {/* Privacy Policy Link */}
+        <button
+          onClick={() => onViewChange('privacy')}
+          className="text-[9px] text-slate-400 hover:text-slate-600 underline transition-colors mt-2"
+        >
+          {language === 'en' ? 'Privacy Policy' : '隐私政策'}
+        </button>
       </div>
     </div>
   );
