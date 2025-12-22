@@ -543,7 +543,10 @@ const handleSaveNote = async (note: NoteCard) => {
         setIsGuestMode(false);
       } else {
         const { error } = await supabase.auth.signOut();
-        if (error) throw error;
+        // Ignore "Auth session missing!" error as it means we are already logged out
+        if (error && !error.message?.includes('Auth session missing')) {
+          throw error;
+        }
       }
       
       // Clear local state
