@@ -665,6 +665,7 @@ const handleSaveNote = async (note: NoteCard) => {
       <OnboardingTour 
         isOpen={showOnboarding} 
         onClose={handleCloseOnboarding} 
+        language={language}
       />
     </div>
   );
