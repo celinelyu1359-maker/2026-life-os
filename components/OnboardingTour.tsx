@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ArrowRight, Calendar, Clock, Target, ChevronLeft } from 'lucide-react';
+import { X, ArrowRight, Calendar, Clock, Target, ChevronLeft, Trophy } from 'lucide-react';
 import { Language } from '../types';
 
 interface OnboardingTourProps {
@@ -29,6 +29,14 @@ const OnboardingTour: React.FC<OnboardingTourProps> = ({ isOpen, onClose, langua
         : "我们的todo list是有delay功能的，可以延续到下个周期。不再为未完成的任务感到焦虑，灵活调整你的节奏。",
       icon: <Clock className="w-12 h-12 text-blue-500" />,
       color: "bg-blue-50"
+    },
+    {
+      title: language === 'en' ? "Habit Scoreboard" : "习惯积分榜",
+      description: language === 'en'
+        ? "Gamify your growth with Normal, Silver, and Golden levels. Track your weekly progress visually and celebrate every small win."
+        : "通过普通、白银、黄金三个等级将习惯养成游戏化。可视化追踪你的每周进度，庆祝每一个小小的胜利。",
+      icon: <Trophy className="w-12 h-12 text-amber-500" />,
+      color: "bg-amber-50"
     },
     {
       title: language === 'en' ? "Life Dimensions" : "生活维度",
