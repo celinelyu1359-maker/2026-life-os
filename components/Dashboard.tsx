@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, ChevronLeft, ChevronRight, Trash2, CheckSquare, Square, CalendarClock, RotateCcw, Edit2, Save, TrendingUp, TrendingDown, Minus, Copy, Target, Lightbulb, X, Sparkles } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Trash2, CheckSquare, Square, CalendarClock, RotateCcw, Edit2, Save, TrendingUp, TrendingDown, Minus, Copy, Target, Lightbulb, X, Sparkles, BarChart3, ListTodo, Smile } from 'lucide-react';
 import { ScoreboardItem, ChallengeItem, Language } from '../types';
 import { getWeekRange, getCurrentWeekNumber } from '../utils';
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 import Modal from './Modal';
 import { Input, Button } from './ui';
 import { generateWeeklyInsight, Insight } from '../insightEngine';
+import EmptyState from './EmptyState';
 
 // =======================================================
 // ✅ 1. LocalStorage Keys & Internal Data Structure
@@ -398,6 +399,80 @@ const Dashboard: React.FC<DashboardProps> = ({
         }));
     };
 
+    // Quick start helpers for empty states
+    const addQuickScoreboardGoal = (type: 'Sleep' | 'Exercise' | 'Reading') => {
+        const templates = {
+            Sleep: { 
+                goal: language === 'en' ? 'Sleep' : '睡眠', 
+                normal: '6h', 
+                silver: '7h', 
+                golden: '8h', 
+                max: 12, 
+                unit: 'h',
+                current: 0,
+                lastWeek: 0
+            },
+            Exercise: { 
+                goal: language === 'en' ? 'Exercise' : '运动', 
+                normal: '2 times', 
+                silver: '3 times', 
+                golden: '4 times', 
+                max: 7, 
+                unit: '',
+                current: 0,
+                lastWeek: 0
+            },
+            Reading: { 
+                goal: language === 'en' ? 'Reading' : '阅读', 
+                normal: '30min', 
+                silver: '1h', 
+                golden: '2h', 
+                max: 5, 
+                unit: 'h',
+                current: 0,
+                lastWeek: 0
+            }
+        };
+
+        const newGoal = {
+            id: Date.now().toString() + Math.random().toString(),
+            ...templates[type]
+        };
+
+        updateCurrentWeekData(data => ({
+            ...data,
+            scoreboard: [...data.scoreboard, newGoal]
+        }));
+
+        // Auto-enable editing mode
+        setIsEditingScoreboard(true);
+    };
+
+    const addQuickChallenge = () => {
+        const exampleChallenge: ChallengeItem = {
+            id: Date.now().toString(),
+            title: language === 'en' ? 'Example: Read one chapter every morning' : '示例：每天早上读一章书',
+            status: 'active',
+            weekAdded: weekNumber
+        };
+
+        updateCurrentWeekData(data => ({
+            ...data,
+            challenges: [...data.challenges, exampleChallenge]
+        }));
+    };
+
+    const addQuickHappyHour = () => {
+        const exampleHappyHour = language === 'en' 
+            ? 'Example: Coffee chat with a friend ☕' 
+            : '示例：和朋友喝咖啡聊天 ☕';
+
+        updateCurrentWeekData(data => ({
+            ...data,
+            happyHours: [...data.happyHours, exampleHappyHour]
+        }));
+    };
+
     const handleAddScoreboardItem = () => {
         const newItem: ScoreboardItem = {
             id: Date.now().toString(),
@@ -772,14 +847,18 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                     <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
                         {scoreboard.length === 0 ? (
-                            <div className="text-center py-8 px-4">
-                                <p className="text-sm text-slate-400 font-light mb-2">
-                                    {language === 'en' ? 'No goals set yet' : '还没有设置目标'}
-                                </p>
-                                <p className="text-xs text-slate-300">
-                                    {language === 'en' ? 'Click edit button to add your weekly goals' : '点击编辑按钮开始添加你的weekly goals'}
-                                </p>
-                            </div>
+                            <EmptyState 
+                                icon={<BarChart3 size={24} className="text-blue-500" />}
+                                title={language === 'en' ? 'Start Your Weekly Review' : '开始你的周回顾'}
+                                description={language === 'en' 
+                                    ? 'Track weekly goals like sleep, exercise, reading. Set Normal/Silver/Golden standards and review progress each week.' 
+                                    : '追踪睡眠、运动、阅读等周目标。设置及格/良好/优秀标准，每周回顾进度。'}
+                                quickActions={[
+                                    { label: language === 'en' ? '😴 Add Sleep Goal' : '😴 添加睡眠目标', onClick: () => addQuickScoreboardGoal('Sleep') },
+                                    { label: language === 'en' ? '🏃 Add Exercise Goal' : '🏃 添加运动目标', onClick: () => addQuickScoreboardGoal('Exercise') },
+                                    { label: language === 'en' ? '📚 Add Reading Goal' : '📚 添加阅读目标', onClick: () => addQuickScoreboardGoal('Reading') },
+                                ]}
+                            />
                         ) : (
                         <div className="overflow-x-auto w-full">
                         <table className="w-full text-left min-w-[600px]">
@@ -937,16 +1016,19 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </div>
                         
                         <div className="space-y-2 mb-3 flex-1">
-                            {challenges.length === 0 && (
-                                <div className="text-center py-4">
-                                    <p className="text-sm text-slate-400 font-light">
-                                        {language === 'en' ? 'Anything fun to try this week? 💪' : '本周有什么想要尝试的有趣事情吗?'}
-                                    </p>
-                                    <p className="text-xs text-slate-300 mt-1">
-                                        💡 {language === 'en' ? 'Click' : '可以点击'} <CalendarClock className="inline" size={10}/> {language === 'en' ? 'to delay to next week' : '延迟到下周'}
-                                    </p>
-                                </div>
-                            )}
+                            {challenges.length === 0 ? (
+                                <EmptyState 
+                                    icon={<ListTodo size={20} className="text-purple-500" />}
+                                    title={language === 'en' ? 'One Thing to Try This Week' : '本周想尝试的一件事'}
+                                    description={language === 'en' 
+                                        ? 'What challenge will you take on? Keep it focused and achievable. You can defer unfinished tasks to next week.' 
+                                        : '本周想要挑战什么？保持专注和可行性。未完成的任务可以延期到下周。'}
+                                    quickActions={[
+                                        { label: language === 'en' ? '✨ Add Example' : '✨ 添加示例', onClick: addQuickChallenge },
+                                    ]}
+                                />
+                            ) : (
+                                <>
                             {deferredTaskText && (
                                 <div className="py-2.5 px-4 bg-slate-50/50 border-l-2 border-slate-300 rounded-lg animate-fade-in mb-3 shadow-sm">
                                     <p className="text-xs text-slate-500 font-light italic tracking-wide">
@@ -988,6 +1070,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                                     )}
                                 </div>
                             ))}
+                            </>
+                            )}
                         </div>
 
                         <div className="flex gap-2 pt-2 border-t border-slate-50 mt-auto">
@@ -1012,13 +1096,19 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </div>
 
                         <div className="space-y-2 mb-3 flex-1">
-                            {happyHours.length === 0 && (
-                                <div className="text-center py-4">
-                                    <p className="text-sm text-slate-400 font-light">
-                                        {language === 'en' ? 'Capture the little things that felt good this week ✨' : '记录这周的美好时刻 ✨'}
-                                    </p>
-                                </div>
-                            )}
+                            {happyHours.length === 0 ? (
+                                <EmptyState 
+                                    icon={<Smile size={20} className="text-amber-500" />}
+                                    title={language === 'en' ? 'Happy Hours' : '记录本周的美好瞬间'}
+                                    description={language === 'en' 
+                                        ? 'What made you smile this week? Capture the little moments that brought you joy.' 
+                                        : '本周什么让你微笑？记录那些带给你快乐的小瞬间。'}
+                                    quickActions={[
+                                        { label: language === 'en' ? '✨ Add Example' : '✨ 添加示例', onClick: addQuickHappyHour },
+                                    ]}
+                                />
+                            ) : (
+                                <>
                             {happyHours.map(c => (
                                 <div key={c.id} className="flex items-center justify-between group">
                                     {editingHappyHourId === c.id ? (
@@ -1051,6 +1141,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                                     )}
                                 </div>
                             ))}
+                            </>
+                            )}
                         </div>
 
                         <div className="flex gap-2 pt-2 border-t border-slate-50 mt-auto">

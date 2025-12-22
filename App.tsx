@@ -17,8 +17,7 @@ import { useDeviceDetect } from './hooks/useDeviceDetect';
 // **已删除：LocalStorage Keys**
 // const CURRENT_WEEK_KEY = 'current-week-num-2026'; // 不再使用 localStorage
 // const NOTES_KEY = 'monthly-notes-2026'; // 不再使用 localStorage
-
-const MONTHLY_THEMES_KEY = 'monthly-themes-2026'; // Monthly Theme的localStorage key
+// const MONTHLY_THEMES_KEY = 'monthly-themes-2026'; // 已改为用户专属 key
 
 const TARGET_YEAR = 2026;
 
@@ -79,19 +78,8 @@ const App: React.FC = () => {
   const [monthlyGoalsData, setMonthlyGoalsData] = useState<Record<number, MonthlyGoal[]>>({});
   
   // 月度主题数据：key是monthIndex
-  const [monthlyThemes, setMonthlyThemes] = useState<Record<number, string>>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(MONTHLY_THEMES_KEY);
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch (e) {
-          console.error('Failed to parse monthly themes:', e);
-        }
-      }
-    }
-    return {};
-  });
+  // ⚠️ 不从 localStorage 初始化，等待从 Supabase 加载（避免用户间数据串号）
+  const [monthlyThemes, setMonthlyThemes] = useState<Record<number, string>>({});
 
   // Supabase auth boot (逻辑保持不变)
   useEffect(() => {
@@ -235,8 +223,9 @@ const App: React.FC = () => {
                 const parsed = JSON.parse(saved);
                 if (parsed && typeof parsed === 'object') {
                   setMonthlyGoalsData(parsed);
-                  // 尝试加载旧的themes数据
-                  const savedThemes = window.localStorage.getItem(MONTHLY_THEMES_KEY);
+                  // 尝试加载用户专属的themes数据
+                  const userSpecificThemesKey = `monthly-themes-2026-${user.id}`;
+                  const savedThemes = window.localStorage.getItem(userSpecificThemesKey);
                   const parsedThemes = savedThemes ? JSON.parse(savedThemes) : {};
                   setMonthlyThemes(parsedThemes);
                   // 同步到云端（延迟执行，避免在加载时触发）
@@ -293,9 +282,10 @@ const App: React.FC = () => {
     // 1. 只有登录用户才保存到 localStorage（使用用户专属 key）
     if (user && typeof window !== 'undefined') {
       try {
-        const userSpecificKey = `monthly-goals-2026-${user.id}`;
-        window.localStorage.setItem(userSpecificKey, JSON.stringify(monthlyGoalsData));
-        window.localStorage.setItem(MONTHLY_THEMES_KEY, JSON.stringify(monthlyThemes));
+        const userSpecificGoalsKey = `monthly-goals-2026-${user.id}`;
+        const userSpecificThemesKey = `monthly-themes-2026-${user.id}`;
+        window.localStorage.setItem(userSpecificGoalsKey, JSON.stringify(monthlyGoalsData));
+        window.localStorage.setItem(userSpecificThemesKey, JSON.stringify(monthlyThemes));
       } catch (e) {
         console.error('Failed to save monthly data to localStorage', e);
       }
