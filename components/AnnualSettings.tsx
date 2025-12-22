@@ -3,6 +3,7 @@ import { Plus, X, Square, CheckSquare, Edit2, Trash2, Lightbulb } from 'lucide-r
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { Dimension, ToDoItem, Language } from '../types';
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
+import { Input, Button } from './ui';
 
 // ✅ localStorage 用的 key
 const DIMENSIONS_KEY = 'annual-dimensions-2026';
@@ -35,6 +36,10 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
   const [editingDimTitleText, setEditingDimTitleText] = useState('');
   const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
   const [editingTodoText, setEditingTodoText] = useState('');
+  
+  // 编辑Dimension Item的状态
+  const [editingDimItemId, setEditingDimItemId] = useState<string | null>(null);
+  const [editingDimItemText, setEditingDimItemText] = useState('');
   const [showDimensionQuickAdd, setShowDimensionQuickAdd] = useState(false);
   const [showTodoQuickAdd, setShowTodoQuickAdd] = useState(false);
   const [customDimension, setCustomDimension] = useState('');
@@ -244,14 +249,16 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
   };
 
   const toggleDimensionItem = (dimId: string, itemId: string) => {
-    setDimensions(prev => prev.map(d => 
-      d.id === dimId 
-        ? {
-            ...d, 
-            items: d.items.map(i => i.id === itemId ? { ...i, completed: !i.completed } : i)
-          } 
-        : d
-    ));
+    setDimensions(prev => prev.map(d => {
+      if (d.id === dimId) {
+        const updated = d.items.map(i => i.id === itemId ? { ...i, completed: !i.completed } : i);
+        // 完成的item自动移到底部
+        const completed = updated.filter(i => i.completed);
+        const uncompleted = updated.filter(i => !i.completed);
+        return { ...d, items: [...uncompleted, ...completed] };
+      }
+      return d;
+    }));
   };
 
   const removeDimensionItem = (dimId: string, itemId: string) => {
@@ -260,6 +267,23 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
         ? { ...d, items: d.items.filter(i => i.id !== itemId) } 
         : d
     ));
+  };
+  
+  // 编辑Dimension Item
+  const startEditDimItem = (itemId: string, text: string) => {
+    setEditingDimItemId(itemId);
+    setEditingDimItemText(text);
+  };
+  
+  const updateDimItem = (dimId: string, itemId: string, newText: string) => {
+    if (!newText.trim()) return;
+    setDimensions(prev => prev.map(d =>
+      d.id === dimId
+        ? { ...d, items: d.items.map(i => i.id === itemId ? { ...i, text: newText } : i) }
+        : d
+    ));
+    setEditingDimItemId(null);
+    setEditingDimItemText('');
   };
 
   const updateDimensionTitle = (dimId: string, newTitle: string) => {
@@ -277,7 +301,13 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
 
   // --- Todo Logic ---
   const toggleTodo = (id: string) => {
-    setTodos(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+    setTodos(prev => {
+      const updated = prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t);
+      // 完成的todo自动移到底部
+      const completed = updated.filter(t => t.completed);
+      const uncompleted = updated.filter(t => !t.completed);
+      return [...uncompleted, ...completed];
+    });
   };
 
   const deleteTodo = (id: string) => {
@@ -319,7 +349,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
           <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-3">
             <div>
               <div className="flex items-center gap-3 mb-1.5">
-                <span className="px-2 py-0.5 rounded-full bg-slate-900 text-white text-[9px] font-bold tracking-widest uppercase">
+                <span className="px-2 py-0.5 rounded-full bg-slate-900 text-white text-xs font-bold tracking-widest uppercase">
                   {language === 'en' ? '2026 Vision' : '2026愿景'}
                 </span>
                 <div className="h-px w-8 bg-slate-900/20"></div>
@@ -464,14 +494,14 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
                           className="p-1 text-slate-400 hover:text-red-500 rounded-md transition-colors"
                           title={language === 'en' ? 'Delete dimension' : '删除维度'}
                         >
-                          <Trash2 size={12} />
+                          <Trash2 size={14} />
                         </button>
                       </div>
                     </div>
                   )}
                   <button 
                     onClick={() => startAddDimensionItem(dim.id)} 
-                    className="text-slate-400 hover:text-slate-900 text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 transition-colors"
+                    className="text-slate-400 hover:text-slate-900 text-xs font-bold uppercase tracking-wider flex items-center gap-1 transition-colors"
                   >
                     <Plus size={10} /> {language === 'en' ? 'Add' : '添加'}
                   </button>
@@ -479,26 +509,51 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
                 <div className="space-y-2 flex-1">
                   {dim.items.map(item => (
                     <div key={item.id} className="relative group">
-                      <div className="flex items-start gap-2 mb-1">
-                        <button onClick={() => toggleDimensionItem(dim.id, item.id)} className="mt-0.5 shrink-0 text-slate-300 hover:text-slate-800 transition-colors">
-                          {item.completed ? (
-                            <CheckSquare size={14} className="text-slate-800" />
-                          ) : (
-                            <Square size={14} />
-                          )}
-                        </button>
-                        <span className={`text-xs font-light leading-snug transition-all flex-1 ${item.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{item.text}</span>
-                        <button onClick={() => removeDimensionItem(dim.id, item.id)} className="text-slate-200 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <X size={10} />
-                        </button>
-                      </div>
+                      {editingDimItemId === item.id ? (
+                        <div className="flex items-center gap-2 mb-1">
+                          <Input
+                            type="text"
+                            value={editingDimItemText}
+                            onChange={(e) => setEditingDimItemText(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') updateDimItem(dim.id, item.id, editingDimItemText);
+                              if (e.key === 'Escape') { setEditingDimItemId(null); setEditingDimItemText(''); }
+                            }}
+                            variant="compact"
+                            className="flex-1"
+                            autoFocus
+                          />
+                          <button onClick={() => updateDimItem(dim.id, item.id, editingDimItemText)} className="text-slate-400 hover:text-green-600 transition-colors">
+                            <CheckSquare size={14} />
+                          </button>
+                          <button onClick={() => { setEditingDimItemId(null); setEditingDimItemText(''); }} className="text-slate-400 hover:text-slate-600 transition-colors">
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-2 mb-1">
+                          <button onClick={(e) => { e.stopPropagation(); toggleDimensionItem(dim.id, item.id); }} className="mt-0.5 shrink-0 text-slate-300 hover:text-slate-800 transition-colors">
+                            {item.completed ? (
+                              <CheckSquare size={14} className="text-slate-800" />
+                            ) : (
+                              <Square size={14} />
+                            )}
+                          </button>
+                          <span onClick={() => startEditDimItem(item.id, item.text)} className={`text-sm font-light leading-snug transition-all flex-1 cursor-text ${item.completed ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{item.text}</span>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => removeDimensionItem(dim.id, item.id)} className="p-1 text-slate-400 hover:text-red-500 rounded-md transition-colors" title={language === 'en' ? 'Delete' : '删除'}>
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       <div className="ml-5 border-l border-slate-100 pl-2">
                         <input 
                           type="text" 
                           placeholder={language === 'en' ? 'Break it down, track progress, or jot down thoughts...' : '拆分细节、追踪进度或记录想法...'}
                           value={item.actualResult}
                           onChange={(e) => updateDimensionItemResult(dim.id, item.id, e.target.value)}
-                          className="w-full bg-transparent text-[10px] text-slate-600 placeholder:text-slate-300 border-none outline-none focus:placeholder:text-slate-400"
+                          className="w-full bg-transparent text-xs text-slate-600 placeholder:text-slate-300 border-none outline-none focus:placeholder:text-slate-400"
                         />
                       </div>
                     </div>
@@ -511,7 +566,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
                         onChange={(e) => setNewItemText(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && confirmAddDimensionItem(dim.id)}
                         placeholder={language === 'en' ? 'Type a goal...' : '输入目标...'}
-                        className="flex-1 text-[10px] bg-transparent outline-none px-1 placeholder:text-slate-400"
+                        className="flex-1 text-sm bg-transparent outline-none px-1 placeholder:text-slate-400"
                       />
                       <button onClick={() => confirmAddDimensionItem(dim.id)} className="bg-slate-900 text-white p-0.5 rounded hover:bg-slate-700"><Plus size={10}/></button>
                       <button onClick={() => setAddingToDimId(null)} className="text-slate-400 hover:text-slate-600 p-0.5"><X size={10}/></button>
@@ -530,7 +585,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h3 className="font-serif text-lg text-slate-900">{language === 'en' ? '20 Things to Do in 2026' : '2026年的 20 件事'}</h3>
-                <p className="text-slate-500 text-[10px] font-light mt-0.5">{language === 'en' ? 'Not "shoulds", actual things you want.' : '不是"应该做的"，而是你真正想做的。'}</p>
+                <p className="text-slate-500 text-xs font-light mt-0.5">{language === 'en' ? 'Not "shoulds", actual things you want.' : '不是"应该做的"，而是你真正想做的。'}</p>
               </div>
               <button
                 onClick={() => setShowTodoQuickAdd(!showTodoQuickAdd)}
@@ -562,7 +617,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
                     onClick={() => {
                       setTodos(prev => [...prev, { id: Date.now().toString(), text: suggestion, completed: false }]);
                     }}
-                    className="px-2 py-1 bg-white border border-slate-300 hover:border-slate-900 hover:bg-slate-900 hover:text-white rounded-md text-[10px] font-medium transition-all"
+                    className="px-2 py-1 bg-white border border-slate-300 hover:border-slate-900 hover:bg-slate-900 hover:text-white rounded-md text-xs font-medium transition-all"
                   >
                     + {suggestion}
                   </button>
@@ -571,28 +626,30 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
               </div>
             )}
             <div className="flex gap-2 mb-4">
-              <input 
+              <Input 
                 type="text" 
                 value={newTodo}
                 onChange={(e) => setNewTodo(e.target.value)}
                 placeholder={language === 'en' ? 'What would you love to do in 2026?' : '你想在2026年做什么？'}
-                className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:border-slate-400 outline-none transition-colors"
+                className="flex-1"
                 onKeyDown={(e) => e.key === 'Enter' && handleAddTodo()}
               />
-              <button 
+              <Button 
                 onClick={handleAddTodo}
-                className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold tracking-wide uppercase transition-colors"
+                variant="primary"
+                size="sm"
+                className="uppercase"
               >
                 {language === 'en' ? 'Add' : '添加'}
-              </button>
+              </Button>
             </div>
 
-            <div className="columns-1 md:columns-2 gap-4 space-y-2">
+            <div className="space-y-2">
               {todos.map(todo => (
-                <div key={todo.id} className="group break-inside-avoid mb-2">
+                <div key={todo.id} className="group flex items-start justify-between">
                   {editingTodoId === todo.id ? (
-                    <div className="flex items-start gap-2">
-                      <input
+                    <div className="flex-1 flex items-center gap-2">
+                      <Input
                         type="text"
                         value={editingTodoText}
                         onChange={(e) => setEditingTodoText(e.target.value)}
@@ -600,51 +657,31 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
                           if (e.key === 'Enter') updateTodo(todo.id, editingTodoText);
                           if (e.key === 'Escape') { setEditingTodoId(null); setEditingTodoText(''); }
                         }}
-                        className="flex-1 bg-white border border-slate-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-slate-400 outline-none"
+                        variant="compact"
+                        className="flex-1"
                         autoFocus
                       />
-                      <button
-                        onClick={() => updateTodo(todo.id, editingTodoText)}
-                        className="text-slate-400 hover:text-green-600 transition-colors"
-                      >
+                      <button onClick={() => updateTodo(todo.id, editingTodoText)} className="p-1 text-slate-400 hover:text-green-600 rounded-md transition-colors" title={language === 'en' ? 'Save' : '保存'}>
                         <CheckSquare size={14} />
                       </button>
-                      <button
-                        onClick={() => { setEditingTodoId(null); setEditingTodoText(''); }}
-                        className="text-slate-400 hover:text-slate-600 transition-colors"
-                      >
+                      <button onClick={() => { setEditingTodoId(null); setEditingTodoText(''); }} className="p-1 text-slate-400 hover:text-slate-600 rounded-md transition-colors" title={language === 'en' ? 'Cancel' : '取消'}>
                         <X size={12} />
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-start gap-2">
-                      <div className="flex items-center gap-2 cursor-pointer mt-0.5" onClick={() => toggleTodo(todo.id)}>
-                        {todo.completed ? (
-                          <CheckSquare className="text-slate-800" size={14} />
-                        ) : (
-                          <Square className="text-slate-300" size={14} />
-                        )}
+                    <>
+                      <div className="flex items-start gap-2 flex-1" onClick={() => startEditTodo(todo.id, todo.text)}>
+                        <button onClick={(e) => { e.stopPropagation(); toggleTodo(todo.id); }} className="mt-0.5 text-slate-400 hover:text-slate-900 transition-colors">
+                          {todo.completed ? <CheckSquare size={14} className="text-slate-900"/> : <Square size={14}/>}
+                        </button>
+                        <span className={`text-sm leading-snug cursor-text flex-1 ${todo.completed ? 'line-through text-slate-300' : 'text-slate-700'}`}>{todo.text}</span>
                       </div>
-                      <div className="flex items-start gap-1 flex-1">
-                        <span className={`text-xs leading-relaxed transition-all ${todo.completed ? 'line-through text-slate-300' : 'text-slate-700'}`}>
-                          {todo.text}
-                        </span>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
-                          <button
-                            onClick={() => startEditTodo(todo.id, todo.text)}
-                            className="text-slate-300 hover:text-slate-900 transition-colors"
-                          >
-                            <Edit2 size={12} />
-                          </button>
-                          <button 
-                            onClick={() => deleteTodo(todo.id)}
-                            className="text-slate-200 hover:text-red-400 transition-colors"
-                          >
-                            <X size={12} />
-                          </button>
-                        </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                        <button onClick={() => deleteTodo(todo.id)} className="p-1 text-slate-400 hover:text-red-500 rounded-md transition-colors" title={language === 'en' ? 'Delete' : '删除'}>
+                          <Trash2 size={14} />
+                        </button>
                       </div>
-                    </div>
+                    </>
                   )}
                 </div>
               ))}
@@ -677,7 +714,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
               </div>
             </div>
             <div className="mt-3 text-center">
-              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">{language === 'en' ? 'Completion' : '完成度'}</span>
+              <span className="text-xs font-bold uppercase tracking-widest text-slate-400">{language === 'en' ? 'Completion' : '完成度'}</span>
               <div className="text-sm font-serif text-slate-900 mt-0.5">
                 {completedCount} / {totalCount} {language === 'en' ? 'Items' : '项'}
               </div>

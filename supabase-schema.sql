@@ -50,6 +50,7 @@ create table if not exists public.monthly_goals (
   month_index integer not null,
   year integer not null default 2026,
   goals jsonb not null default '[]'::jsonb,
+  theme text,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
   unique(user_id, month_index, year)

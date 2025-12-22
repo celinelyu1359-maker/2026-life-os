@@ -131,7 +131,7 @@ const AuthScreen: React.FC = () => {
             </a>
           </div>
 
-          <div className="pt-4 text-[11px] text-slate-400">
+          <div className="pt-4 text-xs text-slate-400">
             If you don’t want login yet, you can keep using localStorage-only mode (remove auth gate in App.tsx).
           </div>
         </div>

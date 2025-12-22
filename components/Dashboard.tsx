@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, ChevronLeft, ChevronRight, Trash2, CheckSquare, Square, CalendarClock, RotateCcw, Edit2, Save, TrendingUp, TrendingDown, Minus, Copy, Target, Lightbulb, X } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Trash2, CheckSquare, Square, CalendarClock, RotateCcw, Edit2, Save, TrendingUp, TrendingDown, Minus, Copy, Target, Lightbulb, X, Sparkles } from 'lucide-react';
 import { ScoreboardItem, ChallengeItem, Language } from '../types';
 import { getWeekRange, getCurrentWeekNumber } from '../utils';
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 import Modal from './Modal';
+import { Input, Button } from './ui';
+import { generateWeeklyInsight, Insight } from '../insightEngine';
 
 // =======================================================
 // ✅ 1. LocalStorage Keys & Internal Data Structure
@@ -108,6 +110,16 @@ const Dashboard: React.FC<DashboardProps> = ({
     const [editingHappyHourId, setEditingHappyHourId] = useState<string | null>(null);
     const [editingHappyHourText, setEditingHappyHourText] = useState('');
     const [deferredTaskText, setDeferredTaskText] = useState<string | null>(null);
+
+    // Insight 状态
+    const [dismissedInsights, setDismissedInsights] = useState<Set<string>>(new Set());
+    const [insightEnabled, setInsightEnabled] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('insight-enabled-2026');
+            return saved !== null ? saved === 'true' : true; // 默认开启
+        }
+        return true;
+    });
 
     // Modal 状态
     const [modalState, setModalState] = useState<{
@@ -359,15 +371,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     };
 
     const handleCopyFromLastWeek = () => {
-        const lastWeekNum = weekNumber - 1;
-        if (lastWeekNum < 1) {
-            setModalState({
-                isOpen: true,
-                type: 'warning',
-                message: language === 'en' ? 'No previous week available' : '没有上一周的数据',
-            });
-            return;
-        }
+        // Week 1的上一周是Week 52
+        const lastWeekNum = weekNumber === 1 ? 52 : weekNumber - 1;
 
         const lastWeekData = allWeeksData.find(d => d.weekNum === lastWeekNum);
         if (!lastWeekData || !lastWeekData.scoreboard || lastWeekData.scoreboard.length === 0) {
@@ -412,18 +417,11 @@ const Dashboard: React.FC<DashboardProps> = ({
     };
 
     const handleDeleteScoreboardItem = (id: string) => {
-        setModalState({
-            isOpen: true,
-            type: 'confirm',
-            title: language === 'en' ? 'Delete Goal' : '删除目标',
-            message: language === 'en' ? 'Are you sure you want to delete this goal?' : '确定要删除这个目标吗？',
-            onConfirm: () => {
-                updateCurrentWeekData(data => ({
-                    ...data,
-                    scoreboard: data.scoreboard.filter(item => item.id !== id)
-                }));
-            }
-        });
+        // 直接删除，不需要确认
+        updateCurrentWeekData(data => ({
+            ...data,
+            scoreboard: data.scoreboard.filter(item => item.id !== id)
+        }));
     };
 
     // --- Challenge Handlers ---
@@ -439,12 +437,18 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
     
     const onToggleChallenge = (id: string) => {
-        updateCurrentWeekData(data => ({
-            ...data,
-            challenges: data.challenges.map(c => 
+        updateCurrentWeekData(data => {
+            const updated = data.challenges.map(c => 
                 c.id === id ? { ...c, completed: !c.completed } : c
-            )
-        }));
+            );
+            // 完成的challenge自动移到底部
+            const completed = updated.filter(c => c.completed);
+            const uncompleted = updated.filter(c => !c.completed);
+            return {
+                ...data,
+                challenges: [...uncompleted, ...completed]
+            };
+        });
     };
     
     const onDeleteChallenge = (id: string) => {
@@ -583,7 +587,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <div className="flex flex-col md:flex-row justify-between items-end gap-4 mb-4 border-b border-slate-200 pb-4">
                     <div>
                         <div className="flex items-center gap-3 mb-1.5">
-                            <span className="px-2 py-0.5 rounded-full bg-slate-900 text-white text-[9px] font-bold tracking-widest uppercase">
+                            <span className="px-2 py-0.5 rounded-full bg-slate-900 text-white text-xs font-bold tracking-widest uppercase">
                                 {language === 'en' ? 'Weekly Review' : '每周回顾'}
                             </span>
                             <div className="h-px w-8 bg-slate-900/20"></div>
@@ -593,11 +597,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 <h2 className="font-serif text-2xl md:text-3xl text-slate-900 tracking-tight min-w-[120px]">Week {weekNumber}</h2>
                                 <div className="flex items-center gap-1.5">
                                     <div className="flex bg-white border border-slate-200 rounded-md p-0.5 shadow-sm">
-                                        {/* 支持2025年week52-53和2026年week1-52的切换 */}
+                                        {/* 2026年只有52周，循环切换 */}
                                         <button 
                                             onClick={() => {
                                                 if (weekNumber === 1) {
-                                                    setWeekNumber(53); // 从2026 week1往前到2025 week53
+                                                    setWeekNumber(52); // 从Week 1往前到Week 52
                                                 } else {
                                                     setWeekNumber(weekNumber - 1);
                                                 }
@@ -608,12 +612,10 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         </button>
                                         <button 
                                             onClick={() => {
-                                                if (weekNumber === 53) {
-                                                    setWeekNumber(1); // 从2025 week53往后到2026 week1
-                                                } else if (weekNumber === 52) {
-                                                    setWeekNumber(53); // 2025 week52 -> week53
+                                                if (weekNumber === 52) {
+                                                    setWeekNumber(1); // 从Week 52往后到Week 1
                                                 } else {
-                                                    setWeekNumber(Math.min(52, weekNumber + 1)); // 2026年最多到52周
+                                                    setWeekNumber(weekNumber + 1);
                                                 }
                                             }} 
                                             className="p-0.5 hover:bg-slate-50 rounded text-slate-500"
@@ -636,7 +638,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 >
                                     <Target size={12}/>
                                 </button>
-                                <span className={`text-[9px] font-light whitespace-nowrap ${
+                                <span className={`text-xs font-light whitespace-nowrap ${
                                     weekNumber === getCurrentWeekNumber() 
                                         ? 'text-slate-300 italic' 
                                         : 'text-slate-400'
@@ -648,7 +650,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 </span>
                             </div>
                         </div>
-                        <p className="text-slate-500 font-mono text-[10px] mt-0.5">{dateRange} · {year}</p>
+                        <p className="text-slate-500 font-mono text-xs mt-0.5">{dateRange} · {year}</p>
                     </div>
                 </div>
 
@@ -659,9 +661,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <h3 className="font-serif text-lg text-slate-900">{language === 'en' ? 'Scoreboard' : '计分板'}</h3>
                             {/* Trend Summary */}
                             <div className="hidden sm:flex items-center gap-2 px-2 py-1 bg-slate-50 rounded-lg border border-slate-100">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{language === 'en' ? 'Total:' : '总分:'}</span>
+                                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{language === 'en' ? 'Total:' : '总分:'}</span>
                                 <span className="font-serif font-bold text-slate-900">{currentTotalScore}</span>
-                                <div className={`flex items-center text-[10px] font-medium ${scoreDiff >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                <div className={`flex items-center text-xs font-medium ${scoreDiff >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                                     {scoreDiff > 0 ? <TrendingUp size={12} className="mr-0.5"/> : scoreDiff < 0 ? <TrendingDown size={12} className="mr-0.5"/> : <Minus size={12} className="mr-0.5"/>}
                                     {Math.abs(scoreDiff)} {language === 'en' ? 'vs last week' : '相比上周'}
                                 </div>
@@ -686,24 +688,24 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <button 
                                 onClick={handleCopyFromLastWeek}
                                 className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                                title={language === 'en' ? 'Copy from last week' : '从上周复制设置'}
+                                title={language === 'en' ? 'Copy settings from last week' : '复制上周的设置'}
                             >
                                 <Copy size={14} />
                             </button>
                             <button 
                                 onClick={handleResetScoreboard}
                                 className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
-                                title={language === 'en' ? 'Reset progress' : '重置进度'}
+                                title={language === 'en' ? 'Clear current values' : '清除现在的数值'}
                             >
                                 <RotateCcw size={14} />
                             </button>
                             <button 
                                 onClick={() => setIsEditingScoreboard(!isEditingScoreboard)}
                                 className={`p-1.5 rounded-md transition-colors flex items-center gap-1.5 ${isEditingScoreboard ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-100'}`}
-                                title={isEditingScoreboard ? (language === 'en' ? 'Save changes' : '保存修改') : (language === 'en' ? 'Edit goals' : '编辑目标')}
+                                title={isEditingScoreboard ? (language === 'en' ? 'Save settings' : '保存设置') : (language === 'en' ? 'Edit settings' : '修改设置')}
                             >
                                 {isEditingScoreboard ? <Save size={14} /> : <Edit2 size={14} />}
-                                {isEditingScoreboard && <span className="text-[10px] font-bold uppercase tracking-wider pr-1">{language === 'en' ? 'Save' : '保存'}</span>}
+                                {isEditingScoreboard && <span className="text-xs font-bold uppercase tracking-wider pr-1">{language === 'en' ? 'Save' : '保存'}</span>}
                             </button>
                         </div>
                     </div>
@@ -759,7 +761,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         className="text-left px-3 py-2 bg-white border border-slate-300 hover:border-slate-900 hover:bg-slate-900 hover:text-white rounded-lg text-xs transition-all group"
                                     >
                                         <div className="font-medium">{suggestion.goal}</div>
-                                        <div className="text-[9px] opacity-60 group-hover:opacity-90 mt-0.5">
+                                        <div className="text-xs opacity-60 group-hover:opacity-90 mt-0.5">
                                             {suggestion.normal} → {suggestion.silver} → {suggestion.golden}
                                         </div>
                                     </button>
@@ -774,23 +776,23 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 <p className="text-sm text-slate-400 font-light mb-2">
                                     {language === 'en' ? 'No goals set yet' : '还没有设置目标'}
                                 </p>
-                                <p className="text-[10px] text-slate-300">
+                                <p className="text-xs text-slate-300">
                                     {language === 'en' ? 'Click edit button to add your weekly goals' : '点击编辑按钮开始添加你的weekly goals'}
                                 </p>
                             </div>
                         ) : (
                         <div className="overflow-x-auto w-full">
-                        <table className="w-full text-sm text-left min-w-[600px]">
+                        <table className="w-full text-left min-w-[600px]">
                             <thead>
-                            <tr className="text-slate-400 font-mono text-[9px] uppercase tracking-wider border-b border-slate-100">
-                                <th className="py-2 px-3 font-normal">{language === 'en' ? 'Goal' : '目标'}</th>
-                                <th className="py-2 px-3 font-normal">{language === 'en' ? 'Normal (1pt)' : '及格 (1分)'}</th>
-                                <th className="py-2 px-3 font-normal">{language === 'en' ? 'Silver (2pts)' : '良好 (2分)'}</th>
-                                <th className="py-2 px-3 font-normal">{language === 'en' ? 'Golden (3pts)' : '优秀 (3分)'}</th>
-                                <th className="py-2 px-3 font-normal">
+                            <tr className="text-slate-400 font-mono text-xs border-b border-slate-100">
+                                <th className="py-1.5 px-2 font-light text-xs">{language === 'en' ? 'Goal' : '目标'}</th>
+                                <th className="py-1.5 px-2 font-light text-xs">{language === 'en' ? 'Normal (1pt)' : '及格 (1分)'}</th>
+                                <th className="py-1.5 px-2 font-light text-xs">{language === 'en' ? 'Silver (2pts)' : '良好 (2分)'}</th>
+                                <th className="py-1.5 px-2 font-light text-xs">{language === 'en' ? 'Golden (3pts)' : '优秀 (3分)'}</th>
+                                <th className="py-1.5 px-2 font-light text-xs">
                                     {isEditingScoreboard ? (language === 'en' ? 'Max / Unit' : '上限/单位') : (language === 'en' ? 'Progress' : '进度')}
                                 </th>
-                                <th className="py-2 px-3 font-normal text-center w-16">
+                                <th className="py-1.5 px-2 font-light text-center w-16 text-xs">
                                     {isEditingScoreboard ? (language === 'en' ? 'Action' : '操作') : (language === 'en' ? 'Score' : '分数')}
                                 </th>
                             </tr>
@@ -800,69 +802,75 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 <tr key={item.id} className={`transition-colors ${isEditingScoreboard ? 'bg-slate-50/30' : 'hover:bg-slate-50/50'}`}>
                                 
                                 {/* GOAL */}
-                                <td className="py-2 px-3 font-medium text-slate-800 text-xs">
+                                <td className="py-1.5 px-2 font-light text-slate-700 text-sm">
                                     {isEditingScoreboard ? (
-                                        <input 
+                                        <Input 
                                             type="text" 
                                             value={item.goal} 
                                             onChange={(e) => handleScoreboardEdit(item.id, 'goal', e.target.value)}
-                                            className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-xs focus:ring-1 focus:ring-slate-400 outline-none"
+                                            variant="compact"
+                                            className="w-full"
                                         />
                                     ) : item.goal}
                                 </td>
                                 
                                 {/* NORMAL */}
-                                <td className="py-2 px-3 text-slate-500 font-light text-[10px]">
+                                <td className="py-1.5 px-2 text-slate-500 font-light text-sm">
                                     {isEditingScoreboard ? (
-                                        <input 
+                                        <Input 
                                             type="text" 
                                             value={item.normal} 
                                             onChange={(e) => handleScoreboardEdit(item.id, 'normal', e.target.value)}
-                                            className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-[10px] focus:ring-1 focus:ring-slate-400 outline-none"
+                                            variant="compact"
+                                            className="w-full"
                                         />
                                     ) : item.normal}
                                 </td>
 
                                 {/* SILVER */}
-                                <td className="py-2 px-3 text-slate-500 font-light text-[10px]">
+                                <td className="py-1.5 px-2 text-slate-500 font-light text-sm">
                                     {isEditingScoreboard ? (
-                                        <input 
+                                        <Input 
                                             type="text" 
                                             value={item.silver} 
                                             onChange={(e) => handleScoreboardEdit(item.id, 'silver', e.target.value)}
-                                            className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-[10px] focus:ring-1 focus:ring-slate-400 outline-none"
+                                            variant="compact"
+                                            className="w-full"
                                         />
                                     ) : item.silver}
                                 </td>
 
                                 {/* GOLDEN */}
-                                <td className="py-2 px-3 text-slate-500 font-light text-[10px]">
+                                <td className="py-1.5 px-2 text-slate-500 font-light text-sm">
                                     {isEditingScoreboard ? (
-                                        <input 
+                                        <Input 
                                             type="text" 
                                             value={item.golden} 
                                             onChange={(e) => handleScoreboardEdit(item.id, 'golden', e.target.value)}
-                                            className="w-full bg-white border border-slate-200 rounded px-1.5 py-1 text-[10px] focus:ring-1 focus:ring-slate-400 outline-none"
+                                            variant="compact"
+                                            className="w-full"
                                         />
                                     ) : item.golden}
                                 </td>
 
                                 {/* PROGRESS OR CONFIG */}
-                                <td className="py-2 px-3">
+                                <td className="py-1.5 px-2">
                                     {isEditingScoreboard ? (
                                         <div className="flex gap-2">
-                                            <input 
+                                            <Input 
                                                 type="number" 
                                                 value={item.max} 
                                                 onChange={(e) => handleScoreboardEdit(item.id, 'max', Number(e.target.value))}
-                                                className="w-12 bg-white border border-slate-200 rounded px-1.5 py-1 text-[10px] focus:ring-1 focus:ring-slate-400 outline-none"
+                                                variant="compact"
+                                                className="w-12"
                                                 placeholder={language === 'en' ? 'Max' : '上限'}
                                             />
-                                            <input 
+                                            <Input 
                                                 type="text" 
                                                 value={item.unit} 
                                                 onChange={(e) => handleScoreboardEdit(item.id, 'unit', e.target.value)}
-                                                className="w-8 bg-white border border-slate-200 rounded px-1.5 py-1 text-[10px] focus:ring-1 focus:ring-slate-400 outline-none"
+                                                variant="compact"
+                                                className="w-8"
                                                 placeholder={language === 'en' ? 'Unit' : '单位'}
                                             />
                                         </div>
@@ -877,13 +885,13 @@ const Dashboard: React.FC<DashboardProps> = ({
                                                 onChange={(e) => handleProgressChange(item.id, e.target.value)}
                                                 className="w-16 h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-slate-900"
                                             />
-                                            <span className="text-[9px] font-mono text-slate-400 w-6 text-right">{item.current}{item.unit}</span>
+                                            <span className="text-xs font-mono text-slate-400 w-6 text-right">{item.current}{item.unit}</span>
                                         </div>
                                     )}
                                 </td>
 
                                 {/* SCORE or DELETE ACTION */}
-                                <td className="py-2 px-3 text-center">
+                                <td className="py-1.5 px-2 text-center">
                                     {isEditingScoreboard ? (
                                         <button 
                                             onClick={() => handleDeleteScoreboardItem(item.id)}
@@ -893,7 +901,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                             <Trash2 size={12} />
                                         </button>
                                     ) : (
-                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold border border-slate-200 bg-slate-50 text-slate-600">
+                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold border border-slate-200 bg-slate-50 text-slate-600">
                                         {calculateScoreLabel(item)}
                                         </span>
                                     )}
@@ -931,17 +939,17 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div className="space-y-2 mb-3 flex-1">
                             {challenges.length === 0 && (
                                 <div className="text-center py-4">
-                                    <p className="text-[10px] text-slate-400 font-light">
+                                    <p className="text-sm text-slate-400 font-light">
                                         {language === 'en' ? 'Anything fun to try this week? 💪' : '本周有什么想要尝试的有趣事情吗?'}
                                     </p>
-                                    <p className="text-[9px] text-slate-300 mt-1">
+                                    <p className="text-xs text-slate-300 mt-1">
                                         💡 {language === 'en' ? 'Click' : '可以点击'} <CalendarClock className="inline" size={10}/> {language === 'en' ? 'to delay to next week' : '延迟到下周'}
                                     </p>
                                 </div>
                             )}
                             {deferredTaskText && (
                                 <div className="py-2.5 px-4 bg-slate-50/50 border-l-2 border-slate-300 rounded-lg animate-fade-in mb-3 shadow-sm">
-                                    <p className="text-[9px] text-slate-500 font-light italic tracking-wide">
+                                    <p className="text-xs text-slate-500 font-light italic tracking-wide">
                                         {language === 'en' ? 'Unfinished tasks can be rolled over with one click.' : '未完成的任务可以一键延期。'}
                                     </p>
                                 </div>
@@ -958,7 +966,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                                     if (e.key === 'Enter') onSaveChallenge();
                                                     if (e.key === 'Escape') setEditingChallengeId(null);
                                                 }}
-                                                className="flex-1 bg-white border border-slate-300 text-xs px-2 py-1 rounded-md outline-none focus:ring-2 focus:ring-slate-400"
+                                                className="flex-1 bg-white border border-slate-300 text-sm px-2 py-1 rounded-md outline-none focus:ring-2 focus:ring-slate-400"
                                                 autoFocus
                                             />
                                             <button onClick={onSaveChallenge} className="p-1 text-slate-400 hover:text-green-600 rounded-md transition-colors" title={language === 'en' ? 'Save' : '保存'}><Save size={12}/></button>
@@ -966,14 +974,13 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         </div>
                                     ) : (
                                         <>
-                                            <div className="flex items-start gap-2 flex-1">
-                                                <button onClick={() => onToggleChallenge(c.id)} className="mt-0.5 text-slate-400 hover:text-slate-900 transition-colors">
+                                            <div className="flex items-start gap-2 flex-1" onClick={() => onEditChallenge(c.id, c.text)}>
+                                                <button onClick={(e) => { e.stopPropagation(); onToggleChallenge(c.id); }} className="mt-0.5 text-slate-400 hover:text-slate-900 transition-colors">
                                                     {c.completed ? <CheckSquare size={14} className="text-slate-900"/> : <Square size={14}/>}
                                                 </button>
-                                                <span className={`text-xs leading-snug ${c.completed ? 'line-through text-slate-300' : 'text-slate-700'}`}>{c.text}</span>
+                                                <span className={`text-sm leading-snug cursor-text flex-1 ${c.completed ? 'line-through text-slate-300' : 'text-slate-700'}`}>{c.text}</span>
                                             </div>
                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
-                                                <button onClick={() => onEditChallenge(c.id, c.text)} className="p-1 text-slate-400 hover:text-slate-900 rounded-md transition-colors" title={language === 'en' ? 'Edit' : '编辑'}><Edit2 size={12}/></button>
                                                 <button onClick={() => onDeferChallenge(c.id)} className="p-1 text-slate-400 hover:text-blue-500 rounded-md transition-colors" title={language === 'en' ? 'Defer to next week' : '推迟到下周'}><CalendarClock size={12}/></button>
                                                 <button onClick={() => onDeleteChallenge(c.id)} className="p-1 text-slate-400 hover:text-red-500 rounded-md transition-colors" title={language === 'en' ? 'Delete' : '删除'}><Trash2 size={12}/></button>
                                             </div>
@@ -984,15 +991,16 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </div>
 
                         <div className="flex gap-2 pt-2 border-t border-slate-50 mt-auto">
-                            <input 
+                            <Input 
                                 type="text" 
                                 value={newChallenge}
                                 onChange={(e) => setNewChallenge(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleAddChallenge()}
                                 placeholder={language === 'en' ? "Is there something you are curious to try this week?" : "本周想挑战什么？"}
-                                className="flex-1 bg-slate-50 text-[10px] px-2 py-1.5 rounded-md outline-none focus:ring-1 focus:ring-slate-200 placeholder:text-slate-400"
+                                variant="compact"
+                                className="flex-1 bg-slate-50"
                             />
-                            <button onClick={handleAddChallenge} className="bg-slate-900 text-white p-1.5 rounded-md hover:bg-slate-700 transition-colors"><Plus size={12}/></button>
+                            <Button onClick={handleAddChallenge} variant="primary" size="sm"><Plus size={12}/></Button>
                         </div>
                     </div>
 
@@ -1006,7 +1014,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div className="space-y-2 mb-3 flex-1">
                             {happyHours.length === 0 && (
                                 <div className="text-center py-4">
-                                    <p className="text-[10px] text-slate-400 font-light">
+                                    <p className="text-sm text-slate-400 font-light">
                                         {language === 'en' ? 'Capture the little things that felt good this week ✨' : '记录这周的美好时刻 ✨'}
                                     </p>
                                 </div>
@@ -1023,7 +1031,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                                     if (e.key === 'Enter') onSaveHappyHour();
                                                     if (e.key === 'Escape') setEditingHappyHourId(null);
                                                 }}
-                                                className="flex-1 bg-white border border-slate-300 text-xs px-2 py-1 rounded-md outline-none focus:ring-2 focus:ring-slate-400"
+                                                className="flex-1 bg-white border border-slate-300 text-sm px-2 py-1 rounded-md outline-none focus:ring-2 focus:ring-slate-400"
                                                 autoFocus
                                             />
                                             <button onClick={onSaveHappyHour} className="p-1 text-slate-400 hover:text-green-600 rounded-md transition-colors" title={language === 'en' ? 'Save' : '保存'}><Save size={12}/></button>
@@ -1033,11 +1041,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         <>
                                             <div className="flex items-center gap-2 flex-1">
                                                 <div className="w-1 h-1 rounded-full bg-amber-400 shrink-0"></div>
-                                                <span className="text-xs text-slate-700">{c.text}</span>
+                                                <span className="text-sm text-slate-700">{c.text}</span>
                                             </div>
                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button onClick={() => onEditHappyHour(c.id, c.text)} className="p-1 text-slate-400 hover:text-slate-900 rounded-md transition-colors" title={language === 'en' ? 'Edit' : '编辑'}><Edit2 size={10}/></button>
-                                                <button onClick={() => deleteHappyHour(c.id)} className="p-1 text-slate-400 hover:text-red-500 rounded-md transition-colors" title={language === 'en' ? 'Delete' : '删除'}><Trash2 size={10}/></button>
+                                                <button onClick={() => onEditHappyHour(c.id, c.text)} className="p-1 text-slate-400 hover:text-slate-900 rounded-md transition-colors" title={language === 'en' ? 'Edit' : '编辑'}><Edit2 size={14}/></button>
+                                                <button onClick={() => deleteHappyHour(c.id)} className="p-1 text-slate-400 hover:text-red-500 rounded-md transition-colors" title={language === 'en' ? 'Delete' : '删除'}><Trash2 size={14}/></button>
                                             </div>
                                         </>
                                     )}
@@ -1046,20 +1054,92 @@ const Dashboard: React.FC<DashboardProps> = ({
                         </div>
 
                         <div className="flex gap-2 pt-2 border-t border-slate-50 mt-auto">
-                            <input 
+                            <Input 
                                 type="text" 
                                 value={newHappyHour}
                                 onChange={(e) => setNewHappyHour(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && addHappyHour()}
                                 placeholder={language === 'en' ? "What made you happy?" : "有什么开心的事？"}
-                                className="flex-1 bg-slate-50 text-[10px] px-2 py-1.5 rounded-md outline-none focus:ring-1 focus:ring-slate-200 placeholder:text-slate-400"
+                                variant="compact"
+                                className="flex-1 bg-slate-50"
                             />
-                            <button onClick={addHappyHour} className="bg-slate-900 text-white p-1.5 rounded-md hover:bg-slate-700 transition-colors"><Plus size={12}/></button>
+                            <Button onClick={addHappyHour} variant="primary" size="sm"><Plus size={12}/></Button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+
+        {/* Weekly Insight */}
+        {insightEnabled && (() => {
+            const currentWeekData = allWeeksData.find(w => w.weekNum === weekNumber);
+            if (!currentWeekData) return null;
+            
+            const insight = generateWeeklyInsight(currentWeekData, allWeeksData, language as 'en' | 'zh');
+            if (!insight || dismissedInsights.has(insight.id)) return null;
+            
+            const typeConfig = {
+                pattern: { bg: 'bg-purple-50', border: 'border-purple-400', text: 'text-purple-900', icon: 'text-purple-600' },
+                streak: { bg: 'bg-emerald-50', border: 'border-emerald-400', text: 'text-emerald-900', icon: 'text-emerald-600' },
+                warning: { bg: 'bg-amber-50', border: 'border-amber-400', text: 'text-amber-900', icon: 'text-amber-600' },
+                achievement: { bg: 'bg-blue-50', border: 'border-blue-400', text: 'text-blue-900', icon: 'text-blue-600' }
+            }[insight.type];
+            
+            return (
+                <div className={`mt-6 p-4 ${typeConfig.bg} border-l-2 ${typeConfig.border} rounded-lg animate-in fade-in slide-in-from-bottom-2 duration-500`}>
+                    <div className="flex items-start gap-3">
+                        <Sparkles size={16} className={`${typeConfig.icon} mt-0.5 shrink-0`} />
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                                <p className={`text-xs font-medium ${typeConfig.text} uppercase tracking-wider`}>
+                                    {language === 'en' ? 'Weekly Pattern' : '本周洞察'}
+                                </p>
+                                <span className="text-xs text-slate-400">
+                                    {insight.confidence}% {language === 'en' ? 'confidence' : '置信度'}
+                                </span>
+                            </div>
+                            <p className={`text-sm ${typeConfig.text} leading-relaxed font-light`}>
+                                {insight.message}
+                            </p>
+                        </div>
+                        <div className="flex flex-col gap-1 shrink-0">
+                            <button 
+                                onClick={() => setDismissedInsights(prev => new Set(prev).add(insight.id))}
+                                className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
+                                title={language === 'en' ? 'Dismiss' : '关闭'}
+                            >
+                                <X size={14} />
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setInsightEnabled(false);
+                                    localStorage.setItem('insight-enabled-2026', 'false');
+                                }}
+                                className="text-xs text-slate-300 hover:text-slate-500 transition-colors"
+                                title={language === 'en' ? 'Turn off insights' : '关闭洞察功能'}
+                            >
+                                ···
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        })()}
+
+        {/* Insight toggle (when disabled) */}
+        {!insightEnabled && (
+            <button
+                onClick={() => {
+                    setInsightEnabled(true);
+                    setDismissedInsights(new Set());
+                    localStorage.setItem('insight-enabled-2026', 'true');
+                }}
+                className="mt-4 w-full p-2 text-xs text-slate-400 hover:text-slate-600 border border-dashed border-slate-200 rounded-lg hover:border-slate-300 transition-colors flex items-center justify-center gap-2"
+            >
+                <Sparkles size={12} />
+                {language === 'en' ? 'Enable Weekly Insights' : '开启每周洞察'}
+            </button>
+        )}
 
         {/* Modal */}
         <Modal

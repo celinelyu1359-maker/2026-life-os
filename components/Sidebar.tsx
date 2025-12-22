@@ -59,13 +59,13 @@ const Sidebar: React.FC<SidebarProps> = ({
     <div className="w-64 bg-[#f8fafc] h-screen fixed left-0 top-0 border-r border-slate-200 flex flex-col p-8 z-10 hidden md:flex font-serif">
       <div className="mb-12">
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">{displayYear} LIFE OS</h1>
-        <p className="text-[10px] font-mono text-slate-400 mt-2 leading-relaxed tracking-widest uppercase">
+        <p className="text-xs font-mono text-slate-400 mt-2 leading-relaxed tracking-widest uppercase">
           {language === 'en' ? 'Annual Notebook' : '年度笔记本'}
         </p>
       </div>
 
       <div className="flex-1">
-        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-6 pl-4">Index</h3>
+        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-6 pl-4">Index</h3>
         <nav className="space-y-2">
           {menuItems.map((item) => (
             <button
@@ -134,17 +134,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <User size={14} className="text-slate-600" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[10px] font-medium text-slate-700 truncate">
+                <p className="text-xs font-medium text-slate-700 truncate">
                   {user.email || 'User'}
                 </p>
-                <p className="text-[9px] text-slate-400">
+                <p className="text-xs text-slate-400">
                   {language === 'en' ? 'Synced' : '已同步'}
                 </p>
               </div>
             </div>
             <button
               onClick={onLogout}
-              className="w-full flex items-center justify-center gap-2 text-[10px] font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors"
+              className="w-full flex items-center justify-center gap-2 text-xs font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors"
             >
               <LogOut size={12} />
               <span>{language === 'en' ? 'Log Out' : '退出登录'}</span>
@@ -154,10 +154,10 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Language Selector */}
         <div className="flex items-center justify-between mb-4">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{language === 'en' ? 'LANG' : '语言'}</span>
+            <span className="text-xs font-bold uppercase tracking-widest text-slate-400">{language === 'en' ? 'LANG' : '语言'}</span>
             <button 
                 onClick={() => setLanguage(language === 'en' ? 'zh' : 'en')}
-                className="flex items-center gap-1 text-[10px] font-bold text-slate-600 hover:text-slate-900 bg-slate-100 px-2 py-1 rounded tracking-wide transition-colors"
+                className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 px-2 py-1 rounded tracking-wide transition-colors"
             >
                 <Languages size={10}/>
                 {language === 'en' ? 'ENGLISH' : '中文'}
@@ -168,7 +168,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="relative group">
           {isEditingMotto ? (
             <div className="space-y-2">
-              <label className="text-[10px] text-slate-400 uppercase tracking-widest font-mono">
+              <label className="text-xs text-slate-400 uppercase tracking-widest font-mono">
                 2026 {language === 'en' ? 'motto' : '座右铭'}:
               </label>
               <div className="flex gap-1">
@@ -180,7 +180,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     if (e.key === 'Enter') handleSaveMotto();
                     if (e.key === 'Escape') handleCancelMotto();
                   }}
-                  className="flex-1 text-[10px] px-2 py-1.5 bg-white border border-slate-300 rounded text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                  className="flex-1 text-xs px-2 py-1.5 bg-white border border-slate-300 rounded text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400"
                   placeholder={language === 'en' ? 'Enter your motto...' : '输入你的座右铭...'}
                   autoFocus
                 />
@@ -202,7 +202,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
           ) : (
             <div className="relative">
-              <p className="text-[10px] text-slate-400 leading-relaxed font-mono pr-6">
+              <p className="text-xs text-slate-400 leading-relaxed font-mono pr-6">
                 2026 {language === 'en' ? 'motto' : '座右铭'}: <br/>
                 <span className="text-slate-600 font-medium">{motto}</span>
               </p>
@@ -222,7 +222,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Privacy Policy Link */}
         <button
           onClick={() => onViewChange('privacy')}
-          className="text-[9px] text-slate-400 hover:text-slate-600 underline transition-colors mt-2"
+          className="text-xs text-slate-400 hover:text-slate-600 underline transition-colors mt-2"
         >
           {language === 'en' ? 'Privacy Policy' : '隐私政策'}
         </button>

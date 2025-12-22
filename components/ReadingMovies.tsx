@@ -274,13 +274,13 @@ const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language, user }) => {
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
                     <div>
                          <div className="flex items-center gap-2 mb-1.5">
-                            <span className="px-2 py-0.5 rounded-full bg-slate-900 text-white text-[9px] font-bold tracking-widest uppercase">
+                            <span className="px-2 py-0.5 rounded-full bg-slate-900 text-white text-xs font-bold tracking-widest uppercase">
                                 {t.archiveLabel}
                             </span>
                             <div className="h-px w-8 bg-slate-900/20"></div>
                         </div>
                         <h2 className="font-serif text-3xl md:text-4xl text-slate-900 tracking-tight mb-1">{t.title}</h2>
-                        <div className="flex gap-4 text-[9px] font-mono font-medium text-slate-400 uppercase tracking-widest">
+                        <div className="flex gap-4 text-xs font-mono font-medium text-slate-400 uppercase tracking-widest">
                             <span>{bookCount} {t.books}</span>
                             <span className="text-slate-300">•</span>
                             <span>{movieCount} {t.movies}</span>
@@ -300,7 +300,7 @@ const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language, user }) => {
                         </div>
                         <button 
                             onClick={() => setShowAddModal(true)} 
-                            className="bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 transition-all flex items-center gap-2 shadow-sm text-[10px] font-bold uppercase tracking-widest shrink-0"
+                            className="bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 transition-all flex items-center gap-2 shadow-sm text-xs font-bold uppercase tracking-widest shrink-0"
                         >
                             <Plus size={12} /> <span className="hidden md:inline">{t.add}</span>
                         </button>
@@ -388,7 +388,7 @@ const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language, user }) => {
                         <button onClick={() => setSelectedItem(null)} className="absolute top-3 right-3 p-2 hover:bg-slate-200 rounded-full text-slate-400 transition-colors"><X size={16}/></button>
                         
                         <div className="mb-5">
-                            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">Review</span>
+                            <span className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1 block">Review</span>
                             <p className="font-serif text-slate-800 text-base leading-relaxed italic">
                                 "{selectedItem.review}"
                             </p>
@@ -396,10 +396,10 @@ const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language, user }) => {
 
                         <div className="space-y-4">
                             <div>
-                                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1 block">Tags</span>
+                                <span className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1 block">Tags</span>
                                 <div className="flex flex-wrap gap-2">
                                     {selectedItem.tags.map(tag => (
-                                        <span key={tag} className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border border-slate-200">
+                                        <span key={tag} className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider border border-slate-200">
                                             {tag}
                                         </span>
                                     ))}
@@ -408,14 +408,14 @@ const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language, user }) => {
                             
                             <div className="flex items-center gap-2 text-slate-500">
                                 <Calendar size={12} />
-                                <span className="text-[10px] font-mono uppercase tracking-wider">Finished: {selectedItem.dateFinished}</span>
+                                <span className="text-xs font-mono uppercase tracking-wider">Finished: {selectedItem.dateFinished}</span>
                             </div>
                         </div>
 
                         <div className="mt-6 pt-5 border-t border-slate-200 flex justify-end">
                             <button 
                                 onClick={() => deleteItem(selectedItem.id)}
-                                className="flex items-center gap-2 text-red-400 hover:text-red-600 text-[10px] font-bold uppercase tracking-widest transition-colors"
+                                className="flex items-center gap-2 text-red-400 hover:text-red-600 text-xs font-bold uppercase tracking-widest transition-colors"
                             >
                                 <Trash2 size={12} /> Delete Entry
                             </button>
@@ -436,7 +436,7 @@ const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language, user }) => {
                     
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-[9px] font-bold text-slate-400 mb-1 uppercase tracking-widest">Title</label>
+                            <label className="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-widest">Title</label>
                             <input 
                                 autoFocus
                                 type="text" 
@@ -449,24 +449,24 @@ const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language, user }) => {
 
                         <div className="grid grid-cols-2 gap-3">
                             <div>
-                                <label className="block text-[9px] font-bold text-slate-400 mb-1 uppercase tracking-widest">Type</label>
+                                <label className="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-widest">Type</label>
                                 <div className="flex bg-slate-100 rounded-lg p-1 border border-slate-200">
                                     <button 
                                         onClick={() => setNewItem({...newItem, type: 'book'})}
-                                        className={`flex-1 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${newItem.type === 'book' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
+                                        className={`flex-1 py-1 rounded-md text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${newItem.type === 'book' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
                                     >
                                         <Book size={10} /> Book
                                     </button>
                                      <button 
                                         onClick={() => setNewItem({...newItem, type: 'movie'})}
-                                        className={`flex-1 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${newItem.type === 'movie' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
+                                        className={`flex-1 py-1 rounded-md text-xs font-bold uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${newItem.type === 'movie' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400 hover:text-slate-600'}`}
                                     >
                                         <Film size={10} /> Movie
                                     </button>
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-[9px] font-bold text-slate-400 mb-1 uppercase tracking-widest">Rating</label>
+                                <label className="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-widest">Rating</label>
                                 <div className="flex justify-between items-center h-[30px] bg-white border border-slate-200 rounded-lg px-2">
                                     {[1,2,3,4,5].map(star => (
                                         <button key={star} onClick={() => setNewItem({...newItem, rating: star})} className={`${newItem.rating && newItem.rating >= star ? 'text-amber-400' : 'text-slate-200'} hover:scale-110 transition-transform`}>
@@ -478,7 +478,7 @@ const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language, user }) => {
                         </div>
 
                         <div>
-                             <label className="block text-[9px] font-bold text-slate-400 mb-1 uppercase tracking-widest">Tags</label>
+                             <label className="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-widest">Tags</label>
                              <div className="flex gap-2">
                                 <input 
                                     type="text" 
@@ -492,14 +492,14 @@ const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language, user }) => {
                              {newItem.tags && newItem.tags.length > 0 && (
                                 <div className="flex gap-2 mt-2 flex-wrap">
                                     {newItem.tags.map(t => (
-                                        <span key={t} className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border border-slate-200">{t}</span>
+                                        <span key={t} className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider border border-slate-200">{t}</span>
                                     ))}
                                 </div>
                              )}
                         </div>
 
                         <div>
-                            <label className="block text-[9px] font-bold text-slate-400 mb-1 uppercase tracking-widest">Review</label>
+                            <label className="block text-xs font-bold text-slate-400 mb-1 uppercase tracking-widest">Review</label>
                             <textarea 
                                 className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs h-16 resize-none outline-none focus:ring-1 focus:ring-slate-400 focus:border-slate-400 transition-all font-serif text-slate-600 leading-relaxed"
                                 value={newItem.review || ''}
@@ -509,7 +509,7 @@ const ReadingMovies: React.FC<ReadingMoviesProps> = ({ language, user }) => {
                         </div>
 
                         <div className="pt-2">
-                            <button onClick={handleAddItem} className="w-full py-2.5 bg-slate-900 text-white rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-slate-800 transition-all shadow-md active:translate-y-0.5">
+                            <button onClick={handleAddItem} className="w-full py-2.5 bg-slate-900 text-white rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-slate-800 transition-all shadow-md active:translate-y-0.5">
                                 Save to Gallery
                             </button>
                         </div>

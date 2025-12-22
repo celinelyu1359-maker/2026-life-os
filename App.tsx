@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar';
+import MobileMenu from './components/MobileMenu';
 import Dashboard from './components/Dashboard';
 import AnnualSettings from './components/AnnualSettings';
 import MonthlyNotebook from './components/MonthlyNotebook';
@@ -11,10 +12,13 @@ import { View, NoteCard, MonthlyGoal, Language } from './types';
 import { Plus } from 'lucide-react';
 import { getCurrentWeekNumber } from './utils';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { useDeviceDetect } from './hooks/useDeviceDetect';
 
 // **已删除：LocalStorage Keys**
 // const CURRENT_WEEK_KEY = 'current-week-num-2026'; // 不再使用 localStorage
 // const NOTES_KEY = 'monthly-notes-2026'; // 不再使用 localStorage
+
+const MONTHLY_THEMES_KEY = 'monthly-themes-2026'; // Monthly Theme的localStorage key
 
 const TARGET_YEAR = 2026;
 
@@ -51,6 +55,9 @@ const App: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [language, setLanguage] = useState<Language>('en');
 
+  // Device detection
+  const device = useDeviceDetect();
+
   // Toast notifications
   const toast = useToast();
 
@@ -70,6 +77,21 @@ const App: React.FC = () => {
 
   // 月度目标数据：key是monthIndex（0=2025年12月, 1=2026年1月, ..., 12=2026年12月）
   const [monthlyGoalsData, setMonthlyGoalsData] = useState<Record<number, MonthlyGoal[]>>({});
+  
+  // 月度主题数据：key是monthIndex
+  const [monthlyThemes, setMonthlyThemes] = useState<Record<number, string>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(MONTHLY_THEMES_KEY);
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          console.error('Failed to parse monthly themes:', e);
+        }
+      }
+    }
+    return {};
+  });
 
   // Supabase auth boot (逻辑保持不变)
   useEffect(() => {
@@ -142,17 +164,18 @@ const App: React.FC = () => {
   }, [user]);
 
   // 辅助函数：同步 Monthly Goals 到云端
-  const syncMonthlyGoalsToCloud = useCallback(async (goalsData: Record<number, MonthlyGoal[]>, userId: string) => {
+  const syncMonthlyGoalsToCloud = useCallback(async (goalsData: Record<number, MonthlyGoal[]>, themesData: Record<number, string>, userId: string) => {
     if (!isSupabaseConfigured) return;
 
     try {
       // 创建所有月份的记录（包括空数组）
-      const rows = Object.entries(goalsData).map(([monthIndex, goals]) => ({
+      const rows = Object.keys({...goalsData, ...themesData}).map(monthIndex => ({
         id: `${userId}-${monthIndex}-2026`,
         user_id: userId,
         month_index: parseInt(monthIndex),
         year: 2026,
-        goals: Array.isArray(goals) ? goals : [], // 即使是空数组也要保存
+        goals: Array.isArray(goalsData[parseInt(monthIndex)]) ? goalsData[parseInt(monthIndex)] : [],
+        theme: themesData[parseInt(monthIndex)] || null,
       }));
 
       if (rows.length > 0) {
@@ -192,11 +215,16 @@ const App: React.FC = () => {
 
         if (data && data.length > 0) {
           // 转换数据库格式到应用格式
-          const converted: Record<number, MonthlyGoal[]> = {};
+          const convertedGoals: Record<number, MonthlyGoal[]> = {};
+          const convertedThemes: Record<number, string> = {};
           data.forEach(row => {
-            converted[row.month_index] = Array.isArray(row.goals) ? row.goals : [];
+            convertedGoals[row.month_index] = Array.isArray(row.goals) ? row.goals : [];
+            if (row.theme) {
+              convertedThemes[row.month_index] = row.theme;
+            }
           });
-          setMonthlyGoalsData(converted);
+          setMonthlyGoalsData(convertedGoals);
+          setMonthlyThemes(convertedThemes);
         } else {
           // 云端没有数据，尝试从用户专属的 localStorage 加载并同步
           if (typeof window !== 'undefined') {
@@ -207,8 +235,12 @@ const App: React.FC = () => {
                 const parsed = JSON.parse(saved);
                 if (parsed && typeof parsed === 'object') {
                   setMonthlyGoalsData(parsed);
+                  // 尝试加载旧的themes数据
+                  const savedThemes = window.localStorage.getItem(MONTHLY_THEMES_KEY);
+                  const parsedThemes = savedThemes ? JSON.parse(savedThemes) : {};
+                  setMonthlyThemes(parsedThemes);
                   // 同步到云端（延迟执行，避免在加载时触发）
-                  setTimeout(() => syncMonthlyGoalsToCloud(parsed, user.id), 100);
+                  setTimeout(() => syncMonthlyGoalsToCloud(parsed, parsedThemes, user.id), 100);
                 } else {
                   setMonthlyGoalsData({});
                 }
@@ -254,7 +286,7 @@ const App: React.FC = () => {
     load();
   }, [user, syncMonthlyGoalsToCloud]);
 
-  // **新增：保存 Monthly Goals 到 localStorage 和 Supabase**
+  // **新增：保存 Monthly Goals 和 Themes 到 localStorage 和 Supabase**
   useEffect(() => {
     if (!monthlyGoalsLoaded) return; // 等待加载完成后再保存
 
@@ -263,17 +295,18 @@ const App: React.FC = () => {
       try {
         const userSpecificKey = `monthly-goals-2026-${user.id}`;
         window.localStorage.setItem(userSpecificKey, JSON.stringify(monthlyGoalsData));
+        window.localStorage.setItem(MONTHLY_THEMES_KEY, JSON.stringify(monthlyThemes));
       } catch (e) {
-        console.error('Failed to save monthly goals to localStorage', e);
+        console.error('Failed to save monthly data to localStorage', e);
       }
     }
 
     // 2. 如果配置了 Supabase 且用户已登录，同步到云端
     if (isSupabaseConfigured && user) {
       // 同步所有月份，包括空数组（确保云端正确删除任务）
-      syncMonthlyGoalsToCloud(monthlyGoalsData, user.id);
+      syncMonthlyGoalsToCloud(monthlyGoalsData, monthlyThemes, user.id);
     }
-  }, [monthlyGoalsData, monthlyGoalsLoaded, user, syncMonthlyGoalsToCloud]);
+  }, [monthlyGoalsData, monthlyThemes, monthlyGoalsLoaded, user, syncMonthlyGoalsToCloud]);
 
   // **已删除：保存 notes 到 localStorage 的 useEffect**
   /* useEffect(() => {
@@ -300,10 +333,23 @@ const App: React.FC = () => {
   // (其他 Goal handlers 保持不变，假设 Monthly Goals 的数据同步未来会实现，目前保持在内存中)
   
   const handleToggleMonthlyGoal = (id: string) => {
+    setMonthlyGoalsData(prev => {
+      const currentGoals = prev[currentMonthIndex] || [];
+      const updated = currentGoals.map(g => (g.id === id ? { ...g, completed: !g.completed } : g));
+      // 完成的goal自动移到底部
+      const completed = updated.filter(g => g.completed);
+      const uncompleted = updated.filter(g => !g.completed);
+      return {
+        ...prev,
+        [currentMonthIndex]: [...uncompleted, ...completed]
+      };
+    });
+  };
+
+  const handleEditMonthlyGoal = (id: string, newText: string) => {
     setMonthlyGoalsData(prev => ({
       ...prev,
-      [currentMonthIndex]:
-        prev[currentMonthIndex]?.map(g => (g.id === id ? { ...g, completed: !g.completed } : g)) || []
+      [currentMonthIndex]: (prev[currentMonthIndex] || []).map(g => g.id === id ? { ...g, text: newText } : g)
     }));
   };
 
@@ -330,6 +376,17 @@ const App: React.FC = () => {
         // 添加到下个月
         [nextMonth]: [...(prev[nextMonth] || []), itemToDefer]
       };
+    });
+  };
+  
+  // 月度主题处理
+  const handleUpdateMonthlyTheme = (theme: string) => {
+    setMonthlyThemes(prev => {
+      const updated = {
+        ...prev,
+        [currentMonthIndex]: theme
+      };
+      return updated;
     });
   };
   
@@ -427,6 +484,28 @@ const handleSaveNote = async (note: NoteCard) => {
     setEditingNote(null);
   };
 
+  const handleDeleteNote = async (id: string) => {
+    // 从本地状态删除
+    setNotes(prev => prev.filter(n => n.id !== id));
+
+    // 从 Supabase 删除
+    if (isSupabaseConfigured && user) {
+      try {
+        const { error } = await supabase
+          .from('notes')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', user.id);
+
+        if (error) {
+          console.error('Error deleting note from Supabase:', error);
+        }
+      } catch (err) {
+        console.error('Failed to delete note:', err);
+      }
+    }
+  };
+
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard':
@@ -444,8 +523,11 @@ const handleSaveNote = async (note: NoteCard) => {
             goals={getCurrentMonthlyGoals()}
             onAddGoal={handleAddMonthlyGoal}
             onToggleGoal={handleToggleMonthlyGoal}
+            onEditGoal={handleEditMonthlyGoal}
             onDeleteGoal={handleDeleteMonthlyGoal}
             onDeferGoal={handleDeferMonthlyGoal}
+            monthlyTheme={monthlyThemes[currentMonthIndex] || ''}
+            onUpdateTheme={handleUpdateMonthlyTheme}
             language={language}
           />
         );
@@ -544,6 +626,7 @@ const handleSaveNote = async (note: NoteCard) => {
     <div className="flex min-h-screen bg-[#f8fafc]">
       <ToastContainer toasts={toast.toasts} onClose={toast.removeToast} />
       
+      {/* 桌面端侧边栏 - 只在桌面端显示 */}
       <Sidebar
         activeView={activeView}
         onViewChange={setActiveView}
@@ -559,64 +642,37 @@ const handleSaveNote = async (note: NoteCard) => {
         onMottoChange={setMotto}
       />
 
-      <main className="md:ml-64 flex-1 p-0 overflow-y-auto h-screen pb-20 md:pb-0">{renderContent()}</main>
+      {/* 移动端菜单 - 只在移动端和平板显示 */}
+      {(device.isMobile || device.isTablet) && (
+        <MobileMenu
+          activeView={activeView}
+          onViewChange={setActiveView}
+          onOpenQuickNote={openQuickNote}
+          currentWeek={currentWeek}
+          language={language}
+          setLanguage={setLanguage}
+          user={user}
+          onLogout={handleLogout}
+          onExportData={handleExportData}
+          feedbackFormUrl={FEEDBACK_FORM_URL}
+          motto={motto}
+        />
+      )}
 
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-2 flex justify-around z-20">
-        <button
-          onClick={() => setActiveView('dashboard')}
-          className={`p-2 rounded-lg ${activeView === 'dashboard' ? 'text-blue-600 bg-blue-50' : 'text-slate-400'}`}
-        >
-          {/* icon */}
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="3" width="7" height="7"></rect>
-            <rect x="14" y="3" width="7" height="7"></rect>
-            <rect x="14" y="14" width="7" height="7"></rect>
-            <rect x="3" y="14" width="7" height="7"></rect>
-          </svg>
-        </button>
+      {/* 主内容区 - 添加顶部和底部padding给移动端导航栏留空间 */}
+      <main className={`md:ml-64 flex-1 p-0 overflow-y-auto h-screen ${device.isMobile || device.isTablet ? 'pt-16 pb-20' : 'pb-0'}`}>
+        {renderContent()}
+      </main>
 
-        <button
-          onClick={() => setActiveView('monthly')}
-          className={`p-2 rounded-lg ${activeView === 'monthly' ? 'text-blue-600 bg-blue-50' : 'text-slate-400'}`}
-        >
-          {/* icon */}
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="16" y1="2" x2="16" y2="6"></line>
-            <line x1="8" y1="2" x2="8" y2="6"></line>
-            <line x1="3" y1="10" x2="21" y2="10"></line>
-          </svg>
-        </button>
-
-        <button onClick={() => openQuickNote()} className="bg-slate-900 text-white p-3 rounded-full -mt-6 shadow-lg">
-          <Plus size={24} />
-        </button>
-
-        <button
-          onClick={() => setActiveView('reading')}
-          className={`p-2 rounded-lg ${activeView === 'reading' ? 'text-blue-600 bg-blue-50' : 'text-slate-400'}`}
-        >
-          {/* icon */}
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-          </svg>
-        </button>
-
-        <button
-          onClick={() => setActiveView('annual')}
-          className={`p-2 rounded-lg ${activeView === 'annual' ? 'text-blue-600 bg-blue-50' : 'text-slate-400'}`}
-        >
-          {/* icon */}
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="3"></circle>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-          </svg>
-        </button>
-      </div>
 
       {isNoteModalOpen && (
-        <NoteModal onClose={closeModal} onSave={handleSaveNote} initialData={editingNote} language={language} />
+        <NoteModal 
+          onClose={closeModal} 
+          onSave={handleSaveNote} 
+          onDelete={handleDeleteNote}
+          initialData={editingNote} 
+          language={language} 
+        />
       )}
     </div>
   );
@@ -626,9 +682,10 @@ const handleSaveNote = async (note: NoteCard) => {
 const NoteModal: React.FC<{
   onClose: () => void;
   onSave: (n: NoteCard) => void;
+  onDelete?: (id: string) => void;
   initialData: NoteCard | null;
   language: Language;
-}> = ({ onClose, onSave, initialData, language }) => {
+}> = ({ onClose, onSave, onDelete, initialData, language }) => {
   const [title, setTitle] = useState(initialData?.title || (language === 'en' ? 'Quick Note' : '随手记'));
   const [content, setContent] = useState(initialData?.content || '');
   const [noteDate, setNoteDate] = useState(initialData?.date || new Date().toISOString().split('T')[0]);
@@ -680,7 +737,7 @@ const NoteModal: React.FC<{
                 onChange={(e) => setNoteDate(e.target.value)}
                 className="text-xs px-2 py-1 border border-slate-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
               />
-              <p className="text-[9px] text-slate-400 mt-1 font-light">
+              <p className="text-xs text-slate-400 mt-1 font-light">
                 💡 Tip: Change date to test monthly notes (use 2026 dates)
               </p>
             </div>
@@ -707,9 +764,24 @@ const NoteModal: React.FC<{
           ></textarea>
 
           <div className="mt-8 pt-6 border-t border-dashed border-slate-300 flex justify-between items-center">
-            <button onClick={onClose} className="text-xs text-slate-500 hover:text-red-500 hover:underline transition-colors">
-              [ {language === 'en' ? 'discard' : '丢弃'} ]
-            </button>
+            <div className="flex gap-4">
+              <button onClick={onClose} className="text-xs text-slate-500 hover:text-slate-900 hover:underline transition-colors">
+                [ {language === 'en' ? 'cancel' : '取消'} ]
+              </button>
+              {initialData && onDelete && (
+                <button 
+                  onClick={() => {
+                    if (confirm(language === 'en' ? 'Delete this note?' : '确认删除这条笔记？')) {
+                      onDelete(initialData.id);
+                      onClose();
+                    }
+                  }}
+                  className="text-xs text-slate-500 hover:text-red-500 hover:underline transition-colors"
+                >
+                  [ {language === 'en' ? 'delete' : '删除'} ]
+                </button>
+              )}
+            </div>
 
             <button
               onClick={handleSave}

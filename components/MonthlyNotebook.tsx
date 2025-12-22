@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Plus, Square, CheckSquare, Trash2, CalendarClock, ArrowRight, PenLine, Search } from 'lucide-react';
 import { getWeeksInMonth, formatNiceDate } from '../utils';
 import { NoteCard, MonthlyGoal, Language } from '../types';
+import { Input, Button } from './ui';
 
 // ✅ 1. 定义 localStorage 的 Key
 const MONTH_INDEX_KEY = 'monthly-notebook-index-2026';
@@ -20,8 +21,11 @@ interface MonthlyNotebookProps {
     goals: MonthlyGoal[];
     onAddGoal: (text: string) => void;
     onToggleGoal: (id: string) => void;
+    onEditGoal: (id: string, newText: string) => void;
     onDeleteGoal: (id: string) => void;
     onDeferGoal: (id: string) => void;
+    monthlyTheme: string;
+    onUpdateTheme: (theme: string) => void;
 }
 
 const monthsEn = ['December', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -43,8 +47,11 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
     goals,
     onAddGoal,
     onToggleGoal,
+    onEditGoal,
     onDeleteGoal,
-    onDeferGoal
+    onDeferGoal,
+    monthlyTheme,
+    onUpdateTheme
 }) => {
   // --- State Management ---
   
@@ -58,6 +65,8 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
   const [weeks, setWeeks] = useState<{weekNum: number, range: string}[]>([]);
   const [newGoalText, setNewGoalText] = useState('');
   const [isAddingGoal, setIsAddingGoal] = useState(false);
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+  const [editingGoalText, setEditingGoalText] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [deferredGoalText, setDeferredGoalText] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -115,6 +124,24 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
           setNewGoalText('');
           setIsAddingGoal(false);
       }
+  };
+
+  const startEditGoal = (id: string, text: string) => {
+      setEditingGoalId(id);
+      setEditingGoalText(text);
+  };
+
+  const updateGoal = () => {
+      if (editingGoalId && editingGoalText.trim()) {
+          onEditGoal(editingGoalId, editingGoalText);
+          setEditingGoalId(null);
+          setEditingGoalText('');
+      }
+  };
+
+  const cancelEditGoal = () => {
+      setEditingGoalId(null);
+      setEditingGoalText('');
   };
 
   const toggleGoal = (id: string) => {
@@ -200,7 +227,7 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
                         transform: isActive ? 'translateY(1px)' : 'translateY(0)', 
                     }}
                 >
-                    <span className={`uppercase tracking-wider text-[9px] opacity-50 ${isActive ? 'block mb-0.5' : ''}`}>
+                    <span className={`uppercase tracking-wider text-xs opacity-50 ${isActive ? 'block mb-0.5' : ''}`}>
                         {monthNumber}
                     </span>
                     <span className={isActive ? 'font-serif text-base font-bold' : ''}>
@@ -219,7 +246,7 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
             <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-3">
                 <div>
                     <div className="flex items-center gap-2 mb-1">
-                        <span className="px-2 py-0.5 rounded-full bg-slate-900 text-white text-[9px] font-bold tracking-widest uppercase">
+                        <span className="px-2 py-0.5 rounded-full bg-slate-900 text-white text-xs font-bold tracking-widest uppercase">
                             {t.monthLabel} {currentMonthIndex + 1 < 10 ? `0${currentMonthIndex + 1}` : currentMonthIndex + 1}
                         </span>
                         <div className="h-px w-8 bg-slate-900/20"></div>
@@ -241,8 +268,22 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-8">
             
-            {/* Left Column: Weeks (Timeline) */}
+            {/* Left Column: Monthly Theme + Weeks */}
             <div className="lg:col-span-4 space-y-4">
+                {/* Monthly Theme Section */}
+                <div className="bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-xl p-4 shadow-sm">
+                    <h3 className="font-serif text-base text-slate-900 mb-2 text-center">
+                        {language === 'en' ? 'Monthly Theme' : '月生活主题'}
+                    </h3>
+                    <Input
+                        type="text"
+                        value={monthlyTheme}
+                        onChange={(e) => onUpdateTheme(e.target.value)}
+                        placeholder={language === 'en' ? "What's the focus?" : "本月主题？"}
+                        className="w-full text-center font-serif text-lg text-slate-800 bg-transparent border-none focus:ring-0 shadow-none placeholder:text-slate-300"
+                    />
+                </div>
+                
                 <h3 className="font-serif text-lg text-slate-900 mb-3 flex items-center gap-2">
                     {t.weeksTitle}
                 </h3>
@@ -256,7 +297,7 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
                             <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-200 group-hover:bg-slate-900 transition-colors rounded-l-xl"></div>
                             <div className="flex justify-between items-center pl-2">
                                 <div>
-                                    <span className="text-[9px] font-bold text-slate-400 tracking-wider uppercase mb-0.5 block">Week {week.weekNum}</span>
+                                    <span className="text-xs font-bold text-slate-400 tracking-wider uppercase mb-0.5 block">Week {week.weekNum}</span>
                                     <span className="text-xs font-medium text-slate-700 font-mono">{week.range}</span>
                                 </div>
                                 <div className="w-5 h-5 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-slate-900 group-hover:text-white transition-colors">
@@ -278,7 +319,7 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
                          {!isAddingGoal && (
                             <button 
                                 onClick={() => setIsAddingGoal(true)} 
-                                className="text-slate-500 hover:text-slate-900 text-[10px] font-medium flex items-center gap-1 px-2 py-0.5 rounded-lg hover:bg-slate-100 transition-colors"
+                                className="text-slate-500 hover:text-slate-900 text-xs font-medium flex items-center gap-1 px-2 py-0.5 rounded-lg hover:bg-slate-100 transition-colors"
                             >
                                 <Plus size={12} /> {t.addGoal}
                             </button>
@@ -287,7 +328,7 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
 
                     {deferredGoalText && (
                         <div className="mb-3 py-2.5 px-4 bg-blue-50/50 border-l-2 border-blue-300 rounded-lg animate-fade-in shadow-sm">
-                            <p className="text-[9px] text-blue-600 font-light italic tracking-wide">
+                            <p className="text-xs text-blue-600 font-light italic tracking-wide">
                                 {language === 'en' 
                                     ? `"${deferredGoalText}" has been moved to next month.` 
                                     : `「${deferredGoalText}」已移动到下个月。`}
@@ -302,39 +343,64 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
                             </div>
                         )}
                         
-                        {displayGoals.map(goal => (
-                             <div key={goal.id} className="group flex items-start gap-2 py-1.5 border-b border-slate-100 last:border-0 hover:bg-white/50 px-2 rounded-lg transition-colors">
-                                <button onClick={() => toggleGoal(goal.id)} className="mt-0.5 text-slate-400 hover:text-slate-900 transition-colors">
-                                    {goal.completed ? <CheckSquare size={16}/> : <Square size={16}/>}
-                                </button>
-                                <span className={`flex-1 text-sm font-light leading-relaxed ${goal.completed ? 'line-through text-slate-300' : 'text-slate-800'}`}>
-                                    {goal.text}
-                                </span>
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button onClick={() => deferGoal(goal.id)} className="p-1 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-full" title={t.defer}>
-                                        <CalendarClock size={12}/>
+                        {displayGoals.map(goal => {
+                            const isEditing = editingGoalId === goal.id;
+                            
+                            if (isEditing) {
+                                return (
+                                    <div key={goal.id} className="flex items-center gap-2 py-1.5 px-2 bg-white rounded-xl shadow-sm border border-slate-100 animate-in fade-in">
+                                        {goal.completed ? <CheckSquare size={14} className="text-slate-400"/> : <Square size={14} className="text-slate-300"/>}
+                                        <Input 
+                                            autoFocus
+                                            value={editingGoalText}
+                                            onChange={e => setEditingGoalText(e.target.value)}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter') updateGoal();
+                                                if (e.key === 'Escape') cancelEditGoal();
+                                            }}
+                                            onBlur={updateGoal}
+                                            variant="compact"
+                                            className="flex-1 bg-transparent border-none focus:ring-0 shadow-none"
+                                        />
+                                    </div>
+                                );
+                            }
+                            
+                            return (
+                                <div key={goal.id} className="group flex items-start gap-2 py-1.5 border-b border-slate-100 last:border-0 hover:bg-white/50 px-2 rounded-lg transition-colors" onClick={() => startEditGoal(goal.id, goal.text)}>
+                                    <button onClick={(e) => { e.stopPropagation(); toggleGoal(goal.id); }} className="mt-0.5 text-slate-400 hover:text-slate-900 transition-colors">
+                                        {goal.completed ? <CheckSquare size={14}/> : <Square size={14}/>}
                                     </button>
-                                    <button onClick={() => deleteGoal(goal.id)} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full">
-                                        <Trash2 size={12}/>
-                                    </button>
+                                    <span className={`flex-1 text-sm font-light leading-relaxed cursor-text ${goal.completed ? 'line-through text-slate-300' : 'text-slate-800'}`}>
+                                        {goal.text}
+                                    </span>
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={(e) => { e.stopPropagation(); deferGoal(goal.id); }} className="p-1 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-full" title={t.defer}>
+                                            <CalendarClock size={14}/>
+                                        </button>
+                                        <button onClick={(e) => { e.stopPropagation(); deleteGoal(goal.id); }} className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full">
+                                            <Trash2 size={14}/>
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
 
                         {isAddingGoal && (
                             <div className="flex items-center gap-2 py-1.5 px-2 bg-white rounded-xl shadow-sm border border-slate-100 animate-in fade-in slide-in-from-top-1">
-                                <Square size={16} className="text-slate-300"/>
-                                <input 
+                                <Square size={14} className="text-slate-300"/>
+                                <Input 
                                     autoFocus
                                     value={newGoalText}
                                     onChange={e => setNewGoalText(e.target.value)}
                                     onKeyDown={e => e.key === 'Enter' && handleAddGoal()}
-                                    className="flex-1 bg-transparent text-sm font-light placeholder:text-slate-300 border-none outline-none focus:ring-0"
+                                    variant="compact"
+                                    className="flex-1 bg-transparent border-none focus:ring-0 shadow-none"
                                     placeholder={language === 'en' ? "What's a priority this month?" : "本月有什么优先要关注的？"}
                                 />
-                                <button onClick={handleAddGoal} className="bg-slate-900 text-white p-1 rounded-lg hover:bg-slate-700">
+                                <Button onClick={handleAddGoal} variant="primary" size="sm">
                                     <Plus size={12}/>
-                                </button>
+                                </Button>
                             </div>
                         )}
                     </div>
@@ -348,12 +414,13 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
                         </h3>
                         <div className="relative w-24 sm:w-32 md:w-40">
                              <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={10} />
-                             <input 
+                             <Input 
                                 type="text"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 placeholder={t.filter}
-                                className="w-full pl-6 pr-2 py-1 bg-slate-50 border border-slate-100 rounded-md text-[10px] outline-none focus:border-slate-300 focus:bg-white transition-all placeholder:text-slate-300"
+                                variant="compact"
+                                className="w-full pl-6 pr-2 bg-slate-50 border-slate-100 text-xs"
                              />
                         </div>
                     </div>
@@ -376,10 +443,10 @@ const MonthlyNotebook: React.FC<MonthlyNotebookProps> = ({
                                 >
                                     <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-100 to-purple-100 opacity-50"></div>
                                     <h4 className="font-bold text-slate-900 mb-1 line-clamp-1 text-xs">{note.title}</h4>
-                                    <p className="text-[10px] text-slate-500 font-light leading-relaxed line-clamp-4 mb-2">
+                                    <p className="text-xs text-slate-500 font-light leading-relaxed line-clamp-4 mb-2">
                                         {note.content || "Empty note..."}
                                     </p>
-                                    <div className="flex justify-between items-center text-[9px] text-slate-400 uppercase tracking-widest font-medium border-t border-slate-50 pt-2">
+                                    <div className="flex justify-between items-center text-xs text-slate-400 uppercase tracking-widest font-medium border-t border-slate-50 pt-2">
                                         <span>{formatNiceDate(note.date, language)}</span>
                                         <span className="opacity-0 group-hover:opacity-100 text-slate-900 transition-opacity">Edit &rarr;</span>
                                     </div>
