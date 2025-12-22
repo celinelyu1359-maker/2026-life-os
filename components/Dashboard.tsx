@@ -769,14 +769,14 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <button 
                                 onClick={handleResetScoreboard}
                                 className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md transition-colors"
-                                title={language === 'en' ? 'Clear current values' : '清除现在的数值'}
+                                title={language === 'en' ? "Reset this week's values" : '重置本周数值'}
                             >
                                 <RotateCcw size={14} />
                             </button>
                             <button 
                                 onClick={() => setIsEditingScoreboard(!isEditingScoreboard)}
                                 className={`p-1.5 rounded-md transition-colors flex items-center gap-1.5 ${isEditingScoreboard ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-900 hover:bg-slate-100'}`}
-                                title={isEditingScoreboard ? (language === 'en' ? 'Save settings' : '保存设置') : (language === 'en' ? 'Edit settings' : '修改设置')}
+                                title={isEditingScoreboard ? (language === 'en' ? 'Save settings' : '保存设置') : (language === 'en' ? "Edit this week's settings" : '编辑这周的设置')}
                             >
                                 {isEditingScoreboard ? <Save size={14} /> : <Edit2 size={14} />}
                                 {isEditingScoreboard && <span className="text-xs font-bold uppercase tracking-wider pr-1">{language === 'en' ? 'Save' : '保存'}</span>}
