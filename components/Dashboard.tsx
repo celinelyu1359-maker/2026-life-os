@@ -451,9 +451,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     const addQuickChallenge = () => {
         const exampleChallenge: ChallengeItem = {
             id: Date.now().toString(),
-            title: language === 'en' ? 'Example: Read one chapter every morning' : '示例：每天早上读一章书',
-            status: 'active',
-            weekAdded: weekNumber
+            text: language === 'en' ? 'Example: Read one chapter every morning' : '示例：每天早上读一章书',
+            completed: false
         };
 
         updateCurrentWeekData(data => ({
