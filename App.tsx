@@ -72,7 +72,7 @@ const App: React.FC = () => {
   const [notes, setNotes] = useState<NoteCard[]>(defaultNotes);
   const [isLoaded, setIsLoaded] = useState(false);
   const [monthlyGoalsLoaded, setMonthlyGoalsLoaded] = useState(false);
-  const [motto, setMotto] = useState('Responsibility & Nutrition');
+  const [motto, setMotto] = useState<string>(''); // 将从 annual_settings 加载，每个用户独立
 
   // 月度目标数据：key是monthIndex（0=2025年12月, 1=2026年1月, ..., 12=2026年12月）
   const [monthlyGoalsData, setMonthlyGoalsData] = useState<Record<number, MonthlyGoal[]>>({});
@@ -483,7 +483,7 @@ const handleSaveNote = async (note: NoteCard) => {
       case 'dashboard':
         return <Dashboard weekNumber={currentWeek} setWeekNumber={setCurrentWeek} user={user} language={language} />;
       case 'annual':
-        return <AnnualSettings user={user} language={language} />;
+        return <AnnualSettings user={user} language={language} motto={motto} onMottoChange={setMotto} />;
       case 'monthly':
         return (
           <MonthlyNotebook

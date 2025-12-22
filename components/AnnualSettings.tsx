@@ -17,9 +17,11 @@ const defaultTodos: ToDoItem[] = [];
 interface AnnualSettingsProps {
   user?: any; // Supabase user object
   language?: Language;
+  motto?: string;
+  onMottoChange?: (newMotto: string) => void;
 }
 
-const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }) => {
+const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', motto = 'Responsibility & Nutrition', onMottoChange }) => {
   console.log("🔥 AnnualSettings FILE IS LOADED 🔥");
 
   // 1️⃣ 状态初始化：先只用默认值，避免服务端/客户端不一致报错
@@ -55,7 +57,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
     : ['尝试一次网球', '尝试做陶瓷', '给家人做顿饭', '买一个加热桌垫', '学一首新歌', '读完一本经典', '去一次博物馆', '尝试冥想', '种点什么', '写一封感谢信'];
 
   // 辅助函数：同步 Annual Settings 到云端
-  const syncAnnualSettingsToCloud = useCallback(async (dims: Dimension[], todosData: ToDoItem[], userId: string) => {
+  const syncAnnualSettingsToCloud = useCallback(async (dims: Dimension[], todosData: ToDoItem[], mottoText: string, userId: string) => {
     if (!isSupabaseConfigured) return;
 
     try {
@@ -65,6 +67,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
         year: 2026,
         dimensions: dims,
         todos: todosData,
+        motto: mottoText || null,
       }, {
         onConflict: 'id',
       });
@@ -93,6 +96,9 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
           if (data) {
             setDimensions(data.dimensions || defaultDimensions);
             setTodos(data.todos || defaultTodos);
+            if (onMottoChange && data.motto) {
+              onMottoChange(data.motto);
+            }
           } else {
             // 云端没有数据，尝试从 localStorage 加载并同步
             if (typeof window !== 'undefined') {
@@ -115,6 +121,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
                   syncAnnualSettingsToCloud(
                     savedDimensions ? JSON.parse(savedDimensions) : defaultDimensions,
                     savedTodos ? JSON.parse(savedTodos) : defaultTodos,
+                    motto,
                     user.id
                   );
                 }, 100);
@@ -190,9 +197,9 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
 
     // 2. 如果配置了 Supabase 且用户已登录，同步到云端
     if (isSupabaseConfigured && user) {
-      syncAnnualSettingsToCloud(dimensions, todos, user.id);
+      syncAnnualSettingsToCloud(dimensions, todos, motto, user.id);
     }
-  }, [dimensions, isLoaded, user, todos, syncAnnualSettingsToCloud]);
+  }, [dimensions, isLoaded, user, todos, motto, syncAnnualSettingsToCloud]);
 
   // 5️⃣ 保存 Todos：同时保存到 localStorage 和 Supabase
   useEffect(() => {
@@ -209,9 +216,19 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en' }
 
     // 2. 如果配置了 Supabase 且用户已登录，同步到云端
     if (isSupabaseConfigured && user) {
-      syncAnnualSettingsToCloud(dimensions, todos, user.id);
+      syncAnnualSettingsToCloud(dimensions, todos, motto, user.id);
     }
-  }, [todos, isLoaded, user, dimensions, syncAnnualSettingsToCloud]);
+  }, [todos, isLoaded, user, dimensions, motto, syncAnnualSettingsToCloud]);
+
+  // 6️⃣ 保存 Motto：motto 变化时同步到云端
+  useEffect(() => {
+    if (!isLoaded || !onMottoChange) return;
+
+    // 如果配置了 Supabase 且用户已登录，同步到云端
+    if (isSupabaseConfigured && user) {
+      syncAnnualSettingsToCloud(dimensions, todos, motto, user.id);
+    }
+  }, [motto, isLoaded, user, dimensions, todos, onMottoChange, syncAnnualSettingsToCloud]);
 
   // --- Dimension Logic ---
   const startAddDimensionItem = (dimId: string) => {
