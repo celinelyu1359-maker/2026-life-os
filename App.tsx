@@ -63,6 +63,7 @@ const App: React.FC = () => {
 
   // Auth State
   const [user, setUser] = useState<any>(null);
+  const [isGuestMode, setIsGuestMode] = useState(false);
 
   // Navigation State
   const [currentWeek, setCurrentWeek] = useState<number>(getInitialWeek());
@@ -78,8 +79,9 @@ const App: React.FC = () => {
 
   // Check for onboarding status
   useEffect(() => {
-    if (user) {
-      const key = `has-seen-onboarding-2026-${user.id}`;
+    if (user || isGuestMode) {
+      const userId = user ? user.id : 'guest';
+      const key = `has-seen-onboarding-2026-${userId}`;
       const hasSeen = localStorage.getItem(key);
       if (!hasSeen) {
         // Small delay to ensure UI is ready
@@ -87,13 +89,12 @@ const App: React.FC = () => {
         return () => clearTimeout(timer);
       }
     }
-  }, [user]);
+  }, [user, isGuestMode]);
 
   const handleCloseOnboarding = () => {
-    if (user) {
-      const key = `has-seen-onboarding-2026-${user.id}`;
-      localStorage.setItem(key, 'true');
-    }
+    const userId = user ? user.id : 'guest';
+    const key = `has-seen-onboarding-2026-${userId}`;
+    localStorage.setItem(key, 'true');
     setShowOnboarding(false);
   };
 
@@ -538,8 +539,12 @@ const handleSaveNote = async (note: NoteCard) => {
   // Logout handler
   const handleLogout = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      if (isGuestMode) {
+        setIsGuestMode(false);
+      } else {
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
+      }
       
       // Clear local state
       setUser(null);
@@ -603,9 +608,9 @@ const handleSaveNote = async (note: NoteCard) => {
   // Google Form URL for feedback
   const FEEDBACK_FORM_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSeZOkEocPS7UeURmQYWAhyhKyq3tYRw0ReHYLjNpC260_EI1w/viewform?usp=dialog';
 
-  // 未登录时显示登录界面
-  if (isSupabaseConfigured && !user) {
-    return <AuthScreen />;
+  // 未登录且非访客模式时显示登录界面
+  if (isSupabaseConfigured && !user && !isGuestMode) {
+    return <AuthScreen onEnterGuestMode={() => setIsGuestMode(true)} />;
   }
 
   // 主应用 UI 结构 (保持不变)

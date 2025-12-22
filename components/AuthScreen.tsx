@@ -1,9 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
+import { ArrowRight } from 'lucide-react';
 
 type Mode = 'signIn' | 'signUp';
 
-const AuthScreen: React.FC = () => {
+interface AuthScreenProps {
+  onEnterGuestMode?: () => void;
+}
+
+const AuthScreen: React.FC<AuthScreenProps> = ({ onEnterGuestMode }) => {
   const [mode, setMode] = useState<Mode>('signIn');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -117,23 +122,22 @@ const AuthScreen: React.FC = () => {
             >
               {mode === 'signIn' ? 'No account? Sign up' : 'Have an account? Sign in'}
             </button>
-            <a
-              className="text-xs text-slate-400 hover:text-slate-600"
-              href="#"
-              onClick={(e) => {
-                e.preventDefault();
-                setMsg(
-                  'MVP tip: keep it simple. Add Magic Link/Google later once the paid version is stable.'
-                );
-              }}
-            >
-              help
-            </a>
           </div>
 
-          <div className="pt-4 text-xs text-slate-400">
-            If you don’t want login yet, you can keep using localStorage-only mode (remove auth gate in App.tsx).
-          </div>
+          {onEnterGuestMode && (
+            <div className="pt-6 mt-2 border-t border-slate-100">
+              <button
+                onClick={onEnterGuestMode}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 hover:text-slate-900 transition-colors border border-slate-200"
+              >
+                <span>Try Demo Mode (No Login)</span>
+                <ArrowRight size={14} />
+              </button>
+              <p className="text-[10px] text-center text-slate-400 mt-2">
+                Data will be saved to your browser only.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
