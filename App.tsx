@@ -246,27 +246,9 @@ const App: React.FC = () => {
         }
       } catch (e) {
         console.error('Failed to load monthly goals from Supabase', e);
-        // 失败时 fallback 到 localStorage
-        if (typeof window !== 'undefined') {
-          try {
-            const saved = window.localStorage.getItem('monthly-goals-2026');
-            if (saved) {
-              const parsed = JSON.parse(saved);
-              if (parsed && typeof parsed === 'object') {
-                setMonthlyGoalsData(parsed);
-              } else {
-                setMonthlyGoalsData({});
-              }
-            } else {
-              setMonthlyGoalsData({});
-            }
-          } catch (err) {
-            console.error('Failed to load from localStorage', err);
-            setMonthlyGoalsData({});
-          }
-        } else {
-          setMonthlyGoalsData({});
-        }
+        // 失败时不再从 localStorage 加载（避免串号）
+        setMonthlyGoalsData({});
+        setMonthlyThemes({});
       } finally {
         setMonthlyGoalsLoaded(true);
       }
@@ -540,15 +522,7 @@ const handleSaveNote = async (note: NoteCard) => {
       setUser(null);
       setNotes(defaultNotes);
       setMonthlyGoalsData({});
-      
-      // 🔧 清理旧的共享 localStorage key（防止数据泄漏）
-      if (typeof window !== 'undefined') {
-        try {
-          window.localStorage.removeItem('monthly-goals-2026');
-        } catch (e) {
-          console.error('Failed to clear old localStorage', e);
-        }
-      }
+      setMonthlyThemes({});
       
       const successMsg = language === 'en' ? 'Logged out successfully' : '已成功退出登录';
       toast.success(successMsg, 2000);
