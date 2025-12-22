@@ -7,6 +7,7 @@ import MonthlyNotebook from './components/MonthlyNotebook';
 import ReadingMovies from './components/ReadingMovies';
 import AuthScreen from './components/AuthScreen';
 import PrivacyPolicy from './components/PrivacyPolicy';
+import OnboardingTour from './components/OnboardingTour';
 import { ToastContainer, useToast } from './components/Toast';
 import { View, NoteCard, MonthlyGoal, Language } from './types';
 import { Plus } from 'lucide-react';
@@ -73,6 +74,28 @@ const App: React.FC = () => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [monthlyGoalsLoaded, setMonthlyGoalsLoaded] = useState(false);
   const [motto, setMotto] = useState<string>(''); // 将从 annual_settings 加载，每个用户独立
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  // Check for onboarding status
+  useEffect(() => {
+    if (user) {
+      const key = `has-seen-onboarding-2026-${user.id}`;
+      const hasSeen = localStorage.getItem(key);
+      if (!hasSeen) {
+        // Small delay to ensure UI is ready
+        const timer = setTimeout(() => setShowOnboarding(true), 1000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [user]);
+
+  const handleCloseOnboarding = () => {
+    if (user) {
+      const key = `has-seen-onboarding-2026-${user.id}`;
+      localStorage.setItem(key, 'true');
+    }
+    setShowOnboarding(false);
+  };
 
   // 月度目标数据：key是monthIndex（0=2025年12月, 1=2026年1月, ..., 12=2026年12月）
   const [monthlyGoalsData, setMonthlyGoalsData] = useState<Record<number, MonthlyGoal[]>>({});
@@ -638,6 +661,11 @@ const handleSaveNote = async (note: NoteCard) => {
           language={language} 
         />
       )}
+
+      <OnboardingTour 
+        isOpen={showOnboarding} 
+        onClose={handleCloseOnboarding} 
+      />
     </div>
   );
 };
