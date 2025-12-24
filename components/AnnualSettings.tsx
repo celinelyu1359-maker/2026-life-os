@@ -61,14 +61,21 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
     if (!isSupabaseConfigured) return;
 
     try {
-      const { error } = await supabase.from('annual_settings').upsert({
+      // Prepare data object
+      const dataToSync: any = {
         id: `${userId}-2026`,
         user_id: userId,
         year: 2026,
         dimensions: dims,
         todos: todosData,
-        motto: mottoText || null,
-      }, {
+      };
+
+      // Only include motto if it exists (backward compatible with databases that don't have the column)
+      if (mottoText) {
+        dataToSync.motto = mottoText;
+      }
+
+      const { error } = await supabase.from('annual_settings').upsert(dataToSync, {
         onConflict: 'id',
       });
 
