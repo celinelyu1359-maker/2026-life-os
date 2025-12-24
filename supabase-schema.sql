@@ -87,6 +87,7 @@ create table if not exists public.annual_settings (
   year integer not null default 2026,
   dimensions jsonb not null default '[]'::jsonb,
   todos jsonb not null default '[]'::jsonb,
+  achievements jsonb not null default '[]'::jsonb,
   motto text,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),

@@ -1,18 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, X, Square, CheckSquare, Edit2, Trash2, Lightbulb } from 'lucide-react';
+import { Plus, X, Square, CheckSquare, Edit2, Trash2, Lightbulb, Sparkles, Calendar } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
-import { Dimension, ToDoItem, Language } from '../types';
+import { Dimension, ToDoItem, Achievement, Language } from '../types';
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 import { Input, Button } from './ui';
 
 // ✅ localStorage 用的 key
 const DIMENSIONS_KEY = 'annual-dimensions-2026';
 const TODOS_KEY = 'annual-todos-2026';
+const ACHIEVEMENTS_KEY = 'annual-achievements-2026';
 
 // ✅ 默认数据
 const defaultDimensions: Dimension[] = [];
 
 const defaultTodos: ToDoItem[] = [];
+
+const defaultAchievements: Achievement[] = [];
 
 interface AnnualSettingsProps {
   user?: any; // Supabase user object
@@ -27,6 +30,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
   // 1️⃣ 状态初始化：先只用默认值，避免服务端/客户端不一致报错
   const [dimensions, setDimensions] = useState<Dimension[]>(defaultDimensions);
   const [todos, setTodos] = useState<ToDoItem[]>(defaultTodos);
+  const [achievements, setAchievements] = useState<Achievement[]>(defaultAchievements);
   
   // 2️⃣ 安全锁：标记数据是否已经从本地加载完毕
   const [isLoaded, setIsLoaded] = useState(false);
@@ -38,6 +42,13 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
   const [editingDimTitleText, setEditingDimTitleText] = useState('');
   const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
   const [editingTodoText, setEditingTodoText] = useState('');
+  
+  // My 100 状态
+  const [showAddAchievementModal, setShowAddAchievementModal] = useState(false);
+  const [achievementDate, setAchievementDate] = useState(new Date().toISOString().split('T')[0]);
+  const [achievementContent, setAchievementContent] = useState('');
+  const [achievementFromTodoId, setAchievementFromTodoId] = useState<string | null>(null);
+  const [editingAchievementId, setEditingAchievementId] = useState<string | null>(null);
   
   // 编辑Dimension Item的状态
   const [editingDimItemId, setEditingDimItemId] = useState<string | null>(null);
@@ -57,7 +68,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
     : ['尝试一次网球', '尝试做陶瓷', '给家人做顿饭', '买一个加热桌垫', '学一首新歌', '读完一本经典', '去一次博物馆', '尝试冥想', '种点什么', '写一封感谢信'];
 
   // 辅助函数：同步 Annual Settings 到云端
-  const syncAnnualSettingsToCloud = useCallback(async (dims: Dimension[], todosData: ToDoItem[], mottoText: string, userId: string) => {
+  const syncAnnualSettingsToCloud = useCallback(async (dims: Dimension[], todosData: ToDoItem[], achievementsData: Achievement[], mottoText: string, userId: string) => {
     if (!isSupabaseConfigured) return;
 
     try {
@@ -68,6 +79,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
         year: 2026,
         dimensions: dims,
         todos: todosData,
+        achievements: achievementsData,
       };
 
       // Only include motto if it exists (backward compatible with databases that don't have the column)
@@ -103,6 +115,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
           if (data) {
             setDimensions(data.dimensions || defaultDimensions);
             setTodos(data.todos || defaultTodos);
+            setAchievements(data.achievements || defaultAchievements);
             if (onMottoChange && data.motto) {
               onMottoChange(data.motto);
             }
@@ -112,6 +125,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
               try {
                 const savedDimensions = window.localStorage.getItem(DIMENSIONS_KEY);
                 const savedTodos = window.localStorage.getItem(TODOS_KEY);
+                const savedAchievements = window.localStorage.getItem(ACHIEVEMENTS_KEY);
 
                 if (savedDimensions) {
                   const parsed = JSON.parse(savedDimensions);
@@ -123,11 +137,17 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
                   if (Array.isArray(parsed)) setTodos(parsed);
                 }
 
+                if (savedAchievements) {
+                  const parsed = JSON.parse(savedAchievements);
+                  if (Array.isArray(parsed)) setAchievements(parsed);
+                }
+
                 // 同步到云端
                 setTimeout(() => {
                   syncAnnualSettingsToCloud(
                     savedDimensions ? JSON.parse(savedDimensions) : defaultDimensions,
                     savedTodos ? JSON.parse(savedTodos) : defaultTodos,
+                    savedAchievements ? JSON.parse(savedAchievements) : defaultAchievements,
                     motto,
                     user.id
                   );
@@ -144,6 +164,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
             try {
               const savedDimensions = window.localStorage.getItem(DIMENSIONS_KEY);
               const savedTodos = window.localStorage.getItem(TODOS_KEY);
+              const savedAchievements = window.localStorage.getItem(ACHIEVEMENTS_KEY);
 
               if (savedDimensions) {
                 const parsed = JSON.parse(savedDimensions);
@@ -153,6 +174,11 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
               if (savedTodos) {
                 const parsed = JSON.parse(savedTodos);
                 if (Array.isArray(parsed)) setTodos(parsed);
+              }
+
+              if (savedAchievements) {
+                const parsed = JSON.parse(savedAchievements);
+                if (Array.isArray(parsed)) setAchievements(parsed);
               }
             } catch (err) {
               console.error('Failed to load from localStorage', err);
@@ -167,6 +193,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
           try {
             const savedDimensions = window.localStorage.getItem(DIMENSIONS_KEY);
             const savedTodos = window.localStorage.getItem(TODOS_KEY);
+            const savedAchievements = window.localStorage.getItem(ACHIEVEMENTS_KEY);
 
             if (savedDimensions) {
               const parsed = JSON.parse(savedDimensions);
@@ -176,6 +203,11 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
             if (savedTodos) {
               const parsed = JSON.parse(savedTodos);
               if (Array.isArray(parsed)) setTodos(parsed);
+            }
+
+            if (savedAchievements) {
+              const parsed = JSON.parse(savedAchievements);
+              if (Array.isArray(parsed)) setAchievements(parsed);
             }
           } catch (e) {
             console.error('Failed to load from localStorage', e);
@@ -189,7 +221,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
     load();
   }, [user, syncAnnualSettingsToCloud, onMottoChange]);
 
-  // 4️⃣ 保存数据：当 dimensions, todos 或 motto 变化时，同时保存到 localStorage 和 Supabase
+  // 4️⃣ 保存数据：当 dimensions, todos, achievements 或 motto 变化时，同时保存到 localStorage 和 Supabase
   useEffect(() => {
     if (!isLoaded) return;
 
@@ -198,6 +230,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(DIMENSIONS_KEY, JSON.stringify(dimensions));
         window.localStorage.setItem(TODOS_KEY, JSON.stringify(todos));
+        window.localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(achievements));
       }
     } catch (e) {
       console.error('Failed to save to localStorage', e);
@@ -205,9 +238,9 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
 
     // 2. 如果配置了 Supabase 且用户已登录，同步到云端
     if (isSupabaseConfigured && user) {
-      syncAnnualSettingsToCloud(dimensions, todos, motto, user.id);
+      syncAnnualSettingsToCloud(dimensions, todos, achievements, motto, user.id);
     }
-  }, [dimensions, todos, motto, isLoaded, user, syncAnnualSettingsToCloud]);
+  }, [dimensions, todos, achievements, motto, isLoaded, user, syncAnnualSettingsToCloud]);
 
   // --- Dimension Logic ---
   const startAddDimensionItem = (dimId: string) => {
@@ -326,6 +359,73 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
     setTodos(prev => prev.map(t => t.id === id ? { ...t, text: newText } : t));
     setEditingTodoId(null);
     setEditingTodoText('');
+  };
+
+  // --- Achievement Logic ---
+  const openAddAchievementModal = (todoId?: string, todoText?: string) => {
+    setAchievementFromTodoId(todoId || null);
+    setAchievementDate(new Date().toISOString().split('T')[0]);
+    setAchievementContent(todoText || '');
+    setEditingAchievementId(null);
+    setShowAddAchievementModal(true);
+  };
+
+  const saveAchievement = () => {
+    if (!achievementContent.trim()) return;
+
+    if (editingAchievementId) {
+      // 编辑现有成就
+      setAchievements(prev => prev.map(a => 
+        a.id === editingAchievementId 
+          ? { ...a, date: achievementDate, content: achievementContent }
+          : a
+      ));
+    } else {
+      // 添加新成就
+      const newAchievement: Achievement = {
+        id: Date.now().toString(),
+        date: achievementDate,
+        content: achievementContent,
+        linkedTodoId: achievementFromTodoId || undefined,
+      };
+      setAchievements(prev => [...prev, newAchievement]);
+
+      // 如果从 todo 转化而来，标记 todo 为完成
+      if (achievementFromTodoId) {
+        setTodos(prev => prev.map(t => 
+          t.id === achievementFromTodoId 
+            ? { ...t, completed: true, inMy100: true } 
+            : t
+        ));
+      }
+    }
+
+    setShowAddAchievementModal(false);
+    setAchievementContent('');
+    setAchievementDate(new Date().toISOString().split('T')[0]);
+    setAchievementFromTodoId(null);
+  };
+
+  const editAchievement = (achievement: Achievement) => {
+    setEditingAchievementId(achievement.id);
+    setAchievementDate(achievement.date);
+    setAchievementContent(achievement.content);
+    setAchievementFromTodoId(achievement.linkedTodoId || null);
+    setShowAddAchievementModal(true);
+  };
+
+  const deleteAchievement = (id: string) => {
+    const achievement = achievements.find(a => a.id === id);
+    setAchievements(prev => prev.filter(a => a.id !== id));
+    
+    // 如果删除的成就关联了 todo，取消 inMy100 标记
+    if (achievement?.linkedTodoId) {
+      setTodos(prev => prev.map(t => 
+        t.id === achievement.linkedTodoId 
+          ? { ...t, inMy100: false } 
+          : t
+      ));
+    }
   };
 
   const completedCount = todos.filter(t => t.completed).length;
@@ -673,6 +773,20 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
                         <span className={`text-sm leading-snug cursor-text flex-1 ${todo.completed ? 'line-through text-slate-300' : 'text-slate-700'}`}>{todo.text}</span>
                       </div>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                        {!todo.inMy100 && (
+                          <button 
+                            onClick={() => openAddAchievementModal(todo.id, todo.text)} 
+                            className="p-1 text-slate-400 hover:text-amber-500 rounded-md transition-colors" 
+                            title={language === 'en' ? 'Add to My 100' : '添加到 My 100'}
+                          >
+                            <Sparkles size={14} />
+                          </button>
+                        )}
+                        {todo.inMy100 && (
+                          <span className="text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-md">
+                            ✨
+                          </span>
+                        )}
                         <button onClick={() => deleteTodo(todo.id)} className="p-1 text-slate-400 hover:text-red-500 rounded-md transition-colors" title={language === 'en' ? 'Delete' : '删除'}>
                           <Trash2 size={14} />
                         </button>
@@ -718,7 +832,152 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
           </div>
 
         </div>
+
+        {/* My 100 Achievements Section */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <h3 className="font-serif text-lg text-slate-900">
+                {language === 'en' ? 'My 100 Achievements in 2026' : '我的 2026 百项成就'}
+              </h3>
+              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-xs font-bold">
+                {achievements.length}/100
+              </span>
+            </div>
+            <button
+              onClick={() => openAddAchievementModal()}
+              className="flex items-center gap-1 px-3 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors text-sm"
+            >
+              <Plus size={14} />
+              <span>{language === 'en' ? 'Add' : '添加'}</span>
+            </button>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="mb-4 bg-slate-100 rounded-full h-2 overflow-hidden">
+            <div 
+              className="h-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all duration-500"
+              style={{ width: `${Math.min((achievements.length / 100) * 100, 100)}%` }}
+            />
+          </div>
+
+          {/* Achievements List */}
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {achievements.length === 0 && (
+              <div className="text-center py-8 text-slate-400">
+                <Sparkles className="mx-auto mb-2" size={32} />
+                <p className="text-sm">
+                  {language === 'en' 
+                    ? 'Start documenting your 2026 achievements! ✨' 
+                    : '开始记录你的 2026 成就吧！✨'}
+                </p>
+              </div>
+            )}
+            
+            {achievements
+              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+              .map(achievement => (
+                <div key={achievement.id} className="group flex items-start gap-3 p-3 bg-white rounded-lg border border-slate-100 hover:border-amber-200 hover:bg-amber-50/30 transition-all">
+                  <div className="flex items-center gap-2 text-slate-400 text-xs min-w-[80px]">
+                    <Calendar size={12} />
+                    <span>{new Date(achievement.date).toLocaleDateString(language === 'en' ? 'en-US' : 'zh-CN', { month: 'short', day: 'numeric' })}</span>
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-slate-700 leading-relaxed">{achievement.content}</p>
+                    {achievement.linkedTodoId && (
+                      <span className="inline-block mt-1 text-[10px] px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full">
+                        {language === 'en' ? 'From 2026 Todo' : '来自 2026 Todo'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button 
+                      onClick={() => editAchievement(achievement)} 
+                      className="p-1 text-slate-400 hover:text-blue-600 rounded-md transition-colors"
+                      title={language === 'en' ? 'Edit' : '编辑'}
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                    <button 
+                      onClick={() => deleteAchievement(achievement.id)} 
+                      className="p-1 text-slate-400 hover:text-red-500 rounded-md transition-colors"
+                      title={language === 'en' ? 'Delete' : '删除'}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
       </div>
+
+      {/* Add/Edit Achievement Modal */}
+      {showAddAchievementModal && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in zoom-in duration-200">
+            <h3 className="text-xl font-serif font-bold text-slate-900 mb-4">
+              {editingAchievementId 
+                ? (language === 'en' ? 'Edit Achievement' : '编辑成就') 
+                : (language === 'en' ? '✨ Add to My 100' : '✨ 添加到 My 100')}
+            </h3>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  {language === 'en' ? 'Date' : '日期'}
+                </label>
+                <input
+                  type="date"
+                  value={achievementDate}
+                  onChange={(e) => setAchievementDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  {language === 'en' ? 'What happened?' : '发生了什么？'}
+                </label>
+                <textarea
+                  value={achievementContent}
+                  onChange={(e) => setAchievementContent(e.target.value)}
+                  placeholder={language === 'en' 
+                    ? 'Describe your achievement...' 
+                    : '描述你的成就...'}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 resize-none"
+                  rows={4}
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowAddAchievementModal(false);
+                  setAchievementContent('');
+                  setAchievementDate(new Date().toISOString().split('T')[0]);
+                  setAchievementFromTodoId(null);
+                  setEditingAchievementId(null);
+                }}
+                className="flex-1 px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                {language === 'en' ? 'Cancel' : '取消'}
+              </button>
+              <button
+                onClick={saveAchievement}
+                disabled={!achievementContent.trim()}
+                className="flex-1 px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {editingAchievementId 
+                  ? (language === 'en' ? 'Save' : '保存')
+                  : (language === 'en' ? 'Add ✨' : '添加 ✨')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

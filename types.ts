@@ -17,6 +17,14 @@ export interface ToDoItem {
   id: string;
   text: string;
   completed: boolean;
+  inMy100?: boolean; // 是否已添加到 My 100
+}
+
+export interface Achievement {
+  id: string;
+  date: string; // YYYY-MM-DD
+  content: string;
+  linkedTodoId?: string; // 如果来自 2026 Todo
 }
 
 export interface DimensionItem {
