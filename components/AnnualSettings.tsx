@@ -5,9 +5,9 @@ import { Dimension, ToDoItem, Language } from '../types';
 import { supabase, isSupabaseConfigured } from '../supabaseClient';
 import { Input, Button } from './ui';
 
-// ✅ localStorage 用的 key (Legacy global keys)
-const LEGACY_DIMENSIONS_KEY = 'annual-dimensions-2026';
-const LEGACY_TODOS_KEY = 'annual-todos-2026';
+// ✅ localStorage 用的 key
+const DIMENSIONS_KEY = 'annual-dimensions-2026';
+const TODOS_KEY = 'annual-todos-2026';
 
 // ✅ 默认数据
 const defaultDimensions: Dimension[] = [];
@@ -22,23 +22,14 @@ interface AnnualSettingsProps {
 }
 
 const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', motto = 'Responsibility & Nutrition', onMottoChange }) => {
+  console.log("🔥 AnnualSettings FILE IS LOADED 🔥");
+
   // 1️⃣ 状态初始化：先只用默认值，避免服务端/客户端不一致报错
   const [dimensions, setDimensions] = useState<Dimension[]>(defaultDimensions);
   const [todos, setTodos] = useState<ToDoItem[]>(defaultTodos);
   
   // 2️⃣ 安全锁：标记数据是否已经从本地加载完毕
   const [isLoaded, setIsLoaded] = useState(false);
-  // 🔒 关键修复：记录当前加载数据的用户ID，防止用户切换时的 Race Condition 导致数据覆盖
-  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
-
-  // 动态获取 localStorage keys
-  const getStorageKeys = useCallback(() => {
-    const userId = user ? user.id : 'guest';
-    return {
-      dimensionsKey: `annual-dimensions-2026-${userId}`,
-      todosKey: `annual-todos-2026-${userId}`
-    };
-  }, [user]);
 
   const [newTodo, setNewTodo] = useState('');
   const [addingToDimId, setAddingToDimId] = useState<string | null>(null);
@@ -90,48 +81,6 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
   // 3️⃣ 挂载时读取：优先从 Supabase，fallback 到 localStorage
   useEffect(() => {
     const load = async () => {
-      const { dimensionsKey, todosKey } = getStorageKeys();
-
-      // 辅助函数：尝试从 localStorage 加载数据（支持迁移旧数据）
-      const loadFromLocal = () => {
-        if (typeof window === 'undefined') return { dims: null, todos: null };
-        
-        try {
-          // 1. 尝试读取用户专属 key
-          let savedDimensions = window.localStorage.getItem(dimensionsKey);
-          let savedTodos = window.localStorage.getItem(todosKey);
-
-          // 2. 如果用户专属 key 为空，尝试读取旧的全局 key (Migration)
-          if (!savedDimensions) {
-            const legacyDims = window.localStorage.getItem(LEGACY_DIMENSIONS_KEY);
-            if (legacyDims) {
-              console.log('📦 Migrating legacy dimensions to user key');
-              savedDimensions = legacyDims;
-              // 迁移后保存到新 key
-              window.localStorage.setItem(dimensionsKey, legacyDims);
-            }
-          }
-
-          if (!savedTodos) {
-            const legacyTodos = window.localStorage.getItem(LEGACY_TODOS_KEY);
-            if (legacyTodos) {
-              console.log('📦 Migrating legacy todos to user key');
-              savedTodos = legacyTodos;
-              // 迁移后保存到新 key
-              window.localStorage.setItem(todosKey, legacyTodos);
-            }
-          }
-
-          return {
-            dims: savedDimensions ? JSON.parse(savedDimensions) : null,
-            todos: savedTodos ? JSON.parse(savedTodos) : null
-          };
-        } catch (e) {
-          console.error('Failed to load from localStorage', e);
-          return { dims: null, todos: null };
-        }
-      };
-
       // 如果配置了 Supabase 且用户已登录，从云端加载
       if (isSupabaseConfigured && user) {
         try {
@@ -145,142 +94,113 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
           if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows returned
 
           if (data) {
-            // ⚠️ 关键修复：如果数据库中有记录但 dimensions 为空（可能是同步失败导致的），
-            // 尝试从本地加载，避免覆盖本地数据
-            if ((!data.dimensions || data.dimensions.length === 0) && (!data.todos || data.todos.length === 0)) {
-              console.warn('⚠️ Cloud data is empty, checking local storage...');
-              const localData = loadFromLocal();
-              if (localData.dims || localData.todos) {
-                console.log('✅ Recovered data from local storage');
-                setDimensions(localData.dims || defaultDimensions);
-                setTodos(localData.todos || defaultTodos);
-                // 立即触发一次同步以修复云端数据
-                setTimeout(() => {
-                  syncAnnualSettingsToCloud(
-                    localData.dims || defaultDimensions,
-                    localData.todos || defaultTodos,
-                    data.motto || motto,
-                    user.id
-                  );
-                }, 500);
-              } else {
-                setDimensions(defaultDimensions);
-                setTodos(defaultTodos);
-              }
-            } else {
-              setDimensions(data.dimensions || defaultDimensions);
-              setTodos(data.todos || defaultTodos);
-            }
-            
+            setDimensions(data.dimensions || defaultDimensions);
+            setTodos(data.todos || defaultTodos);
             if (onMottoChange && data.motto) {
               onMottoChange(data.motto);
             }
           } else {
             // 云端没有数据，尝试从 localStorage 加载并同步
-            const localData = loadFromLocal();
-            if (localData.dims) setDimensions(localData.dims);
-            if (localData.todos) setTodos(localData.todos);
+            if (typeof window !== 'undefined') {
+              try {
+                const savedDimensions = window.localStorage.getItem(DIMENSIONS_KEY);
+                const savedTodos = window.localStorage.getItem(TODOS_KEY);
 
-            // 同步到云端
-            if (localData.dims || localData.todos) {
-              setTimeout(() => {
-                syncAnnualSettingsToCloud(
-                  localData.dims || defaultDimensions,
-                  localData.todos || defaultTodos,
-                  motto,
-                  user.id
-                );
-              }, 100);
+                if (savedDimensions) {
+                  const parsed = JSON.parse(savedDimensions);
+                  if (Array.isArray(parsed)) setDimensions(parsed);
+                }
+                
+                if (savedTodos) {
+                  const parsed = JSON.parse(savedTodos);
+                  if (Array.isArray(parsed)) setTodos(parsed);
+                }
+
+                // 同步到云端
+                setTimeout(() => {
+                  syncAnnualSettingsToCloud(
+                    savedDimensions ? JSON.parse(savedDimensions) : defaultDimensions,
+                    savedTodos ? JSON.parse(savedTodos) : defaultTodos,
+                    motto,
+                    user.id
+                  );
+                }, 100);
+              } catch (e) {
+                console.error('Failed to load from localStorage', e);
+              }
             }
           }
         } catch (e) {
           console.error('Failed to load annual settings from Supabase', e);
           // 失败时 fallback 到 localStorage
-          const localData = loadFromLocal();
-          if (localData.dims) setDimensions(localData.dims);
-          if (localData.todos) setTodos(localData.todos);
+          if (typeof window !== 'undefined') {
+            try {
+              const savedDimensions = window.localStorage.getItem(DIMENSIONS_KEY);
+              const savedTodos = window.localStorage.getItem(TODOS_KEY);
+
+              if (savedDimensions) {
+                const parsed = JSON.parse(savedDimensions);
+                if (Array.isArray(parsed)) setDimensions(parsed);
+              }
+              
+              if (savedTodos) {
+                const parsed = JSON.parse(savedTodos);
+                if (Array.isArray(parsed)) setTodos(parsed);
+              }
+            } catch (err) {
+              console.error('Failed to load from localStorage', err);
+            }
+          }
         } finally {
           setIsLoaded(true);
-          setLoadedUserId(user ? user.id : 'guest');
         }
       } else {
         // 未配置 Supabase 或未登录，只从 localStorage 加载
-        const localData = loadFromLocal();
-        if (localData.dims) setDimensions(localData.dims);
-        if (localData.todos) setTodos(localData.todos);
-        setIsLoaded(true);
-        setLoadedUserId(user ? user.id : 'guest');
+        if (typeof window !== 'undefined') {
+          try {
+            const savedDimensions = window.localStorage.getItem(DIMENSIONS_KEY);
+            const savedTodos = window.localStorage.getItem(TODOS_KEY);
+
+            if (savedDimensions) {
+              const parsed = JSON.parse(savedDimensions);
+              if (Array.isArray(parsed)) setDimensions(parsed);
+            }
+            
+            if (savedTodos) {
+              const parsed = JSON.parse(savedTodos);
+              if (Array.isArray(parsed)) setTodos(parsed);
+            }
+          } catch (e) {
+            console.error('Failed to load from localStorage', e);
+          } finally {
+            setIsLoaded(true);
+          }
+        }
       }
     };
 
     load();
-  }, [user, syncAnnualSettingsToCloud, getStorageKeys]);
+  }, [user, syncAnnualSettingsToCloud, onMottoChange]);
 
-  // 4️⃣ 保存 Dimensions：同时保存到 localStorage 和 Supabase
+  // 4️⃣ 保存数据：当 dimensions, todos 或 motto 变化时，同时保存到 localStorage 和 Supabase
   useEffect(() => {
     if (!isLoaded) return;
-    
-    // 🔒 关键修复：如果当前加载的数据不属于当前用户（例如用户刚切换），则不保存，防止覆盖
-    const currentUserId = user ? user.id : 'guest';
-    if (loadedUserId !== currentUserId) {
-      console.warn(`🚫 Prevented saving dimensions: loaded user (${loadedUserId}) !== current user (${currentUserId})`);
-      return;
-    }
-
-    const { dimensionsKey } = getStorageKeys();
 
     // 1. 始终保存到 localStorage
     try {
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem(dimensionsKey, JSON.stringify(dimensions));
+        window.localStorage.setItem(DIMENSIONS_KEY, JSON.stringify(dimensions));
+        window.localStorage.setItem(TODOS_KEY, JSON.stringify(todos));
       }
     } catch (e) {
-      console.error('Failed to save dimensions', e);
+      console.error('Failed to save to localStorage', e);
     }
 
     // 2. 如果配置了 Supabase 且用户已登录，同步到云端
     if (isSupabaseConfigured && user) {
       syncAnnualSettingsToCloud(dimensions, todos, motto, user.id);
     }
-  }, [dimensions, isLoaded, user, todos, motto, syncAnnualSettingsToCloud, getStorageKeys, loadedUserId]);
-
-  // 5️⃣ 保存 Todos：同时保存到 localStorage 和 Supabase
-  useEffect(() => {
-    if (!isLoaded) return;
-
-    // 🔒 关键修复：如果当前加载的数据不属于当前用户（例如用户刚切换），则不保存，防止覆盖
-    const currentUserId = user ? user.id : 'guest';
-    if (loadedUserId !== currentUserId) {
-      console.warn(`🚫 Prevented saving todos: loaded user (${loadedUserId}) !== current user (${currentUserId})`);
-      return;
-    }
-
-    const { todosKey } = getStorageKeys();
-
-    // 1. 始终保存到 localStorage
-    try {
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(todosKey, JSON.stringify(todos));
-      }
-    } catch (e) {
-      console.error('Failed to save todos', e);
-    }
-
-    // 2. 如果配置了 Supabase 且用户已登录，同步到云端
-    if (isSupabaseConfigured && user) {
-      syncAnnualSettingsToCloud(dimensions, todos, motto, user.id);
-    }
-  }, [todos, isLoaded, user, dimensions, motto, syncAnnualSettingsToCloud, getStorageKeys, loadedUserId]);
-
-  // 6️⃣ 保存 Motto：motto 变化时同步到云端
-  useEffect(() => {
-    if (!isLoaded || !onMottoChange) return;
-
-    // 如果配置了 Supabase 且用户已登录，同步到云端
-    if (isSupabaseConfigured && user) {
-      syncAnnualSettingsToCloud(dimensions, todos, motto, user.id);
-    }
-  }, [motto, isLoaded, user, dimensions, todos, onMottoChange, syncAnnualSettingsToCloud]);
+  }, [dimensions, todos, motto, isLoaded, user, syncAnnualSettingsToCloud]);
 
   // --- Dimension Logic ---
   const startAddDimensionItem = (dimId: string) => {
