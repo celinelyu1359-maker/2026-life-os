@@ -28,6 +28,8 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
   
   // 2️⃣ 安全锁：标记数据是否已经从本地加载完毕
   const [isLoaded, setIsLoaded] = useState(false);
+  // 🔒 关键修复：记录当前加载数据的用户ID，防止用户切换时的 Race Condition 导致数据覆盖
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
 
   // 动态获取 localStorage keys
   const getStorageKeys = useCallback(() => {
@@ -199,6 +201,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
           if (localData.todos) setTodos(localData.todos);
         } finally {
           setIsLoaded(true);
+          setLoadedUserId(user ? user.id : 'guest');
         }
       } else {
         // 未配置 Supabase 或未登录，只从 localStorage 加载
@@ -206,6 +209,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
         if (localData.dims) setDimensions(localData.dims);
         if (localData.todos) setTodos(localData.todos);
         setIsLoaded(true);
+        setLoadedUserId(user ? user.id : 'guest');
       }
     };
 
@@ -215,6 +219,14 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
   // 4️⃣ 保存 Dimensions：同时保存到 localStorage 和 Supabase
   useEffect(() => {
     if (!isLoaded) return;
+    
+    // 🔒 关键修复：如果当前加载的数据不属于当前用户（例如用户刚切换），则不保存，防止覆盖
+    const currentUserId = user ? user.id : 'guest';
+    if (loadedUserId !== currentUserId) {
+      console.warn(`🚫 Prevented saving dimensions: loaded user (${loadedUserId}) !== current user (${currentUserId})`);
+      return;
+    }
+
     const { dimensionsKey } = getStorageKeys();
 
     // 1. 始终保存到 localStorage
@@ -230,11 +242,19 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
     if (isSupabaseConfigured && user) {
       syncAnnualSettingsToCloud(dimensions, todos, motto, user.id);
     }
-  }, [dimensions, isLoaded, user, todos, motto, syncAnnualSettingsToCloud, getStorageKeys]);
+  }, [dimensions, isLoaded, user, todos, motto, syncAnnualSettingsToCloud, getStorageKeys, loadedUserId]);
 
   // 5️⃣ 保存 Todos：同时保存到 localStorage 和 Supabase
   useEffect(() => {
     if (!isLoaded) return;
+
+    // 🔒 关键修复：如果当前加载的数据不属于当前用户（例如用户刚切换），则不保存，防止覆盖
+    const currentUserId = user ? user.id : 'guest';
+    if (loadedUserId !== currentUserId) {
+      console.warn(`🚫 Prevented saving todos: loaded user (${loadedUserId}) !== current user (${currentUserId})`);
+      return;
+    }
+
     const { todosKey } = getStorageKeys();
 
     // 1. 始终保存到 localStorage
@@ -250,7 +270,7 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
     if (isSupabaseConfigured && user) {
       syncAnnualSettingsToCloud(dimensions, todos, motto, user.id);
     }
-  }, [todos, isLoaded, user, dimensions, motto, syncAnnualSettingsToCloud, getStorageKeys]);
+  }, [todos, isLoaded, user, dimensions, motto, syncAnnualSettingsToCloud, getStorageKeys, loadedUserId]);
 
   // 6️⃣ 保存 Motto：motto 变化时同步到云端
   useEffect(() => {
