@@ -78,39 +78,32 @@ export function formatNiceDate(dateStr: string, language: Language = 'en') {
 
 // ✅ 获取当前真实的周数 (使用 ISO 8601 规则)
 // 支持2025年和2026年的跨年周数计算
+// 2026 Life OS: 如果当前在2026年或之后，返回2026年的周数；如果在2025年，返回Week 1作为预览
 export function getCurrentWeekNumber(targetYear: number = 2026): number {
     const now = new Date();
     const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth(); // 0-11
     
-    // 计算当前日期的实际ISO周数
-    const date = new Date(now.getTime());
-    date.setHours(0, 0, 0, 0);
-    
-    // ISO 周数计算：将日期设置为当前周的周四（周四决定周数）
-    date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
-    
-    // 找到实际年份的第一个周四（Week 1）
-    const actualYear = date.getFullYear(); // 周四所在的年份
-    const yearStartThursday = new Date(actualYear, 0, 4);
-    yearStartThursday.setDate(yearStartThursday.getDate() + 3 - (yearStartThursday.getDay() + 6) % 7);
-    
-    // 计算周数
-    const diffTime = date.getTime() - yearStartThursday.getTime();
-    const weekNumber = 1 + Math.round(diffTime / (7 * 24 * 60 * 60 * 1000));
-    
-    // 如果是2025年，最多只有52周
-    if (actualYear === 2025) {
-        return Math.min(52, weekNumber);
-    }
-    
-    // 如果是2026年，返回周数（1-52范围）
-    if (actualYear === 2026) {
+    // 如果当前是2026年或之后，计算实际周数
+    if (currentYear >= 2026) {
+        const date = new Date(now.getTime());
+        date.setHours(0, 0, 0, 0);
+        
+        // ISO 周数计算：将日期设置为当前周的周四（周四决定周数）
+        date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+        
+        // 找到2026年的第一个周四（Week 1）
+        const yearStartThursday = new Date(2026, 0, 4);
+        yearStartThursday.setDate(yearStartThursday.getDate() + 3 - (yearStartThursday.getDay() + 6) % 7);
+        
+        // 计算周数
+        const diffTime = date.getTime() - yearStartThursday.getTime();
+        const weekNumber = 1 + Math.round(diffTime / (7 * 24 * 60 * 60 * 1000));
+        
         return Math.min(52, Math.max(1, weekNumber));
     }
     
-    // 其他年份的默认处理
-    if (actualYear > 2026) return 52;
-    if (actualYear < 2025) return 1;
-    
-    return Math.min(52, Math.max(1, weekNumber));
+    // 如果当前是2025年，返回 Week 1（准备迎接2026年）
+    // 这样用户在2025年末打开应用时，默认显示2026年的第一周
+    return 1;
 }
