@@ -9,7 +9,7 @@ import AuthScreen from './components/AuthScreen';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import OnboardingTour from './components/OnboardingTour';
 import { ToastContainer, useToast } from './components/Toast';
-import { View, NoteCard, MonthlyGoal, Language } from './types';
+import { View, NoteCard, MonthlyGoal, Achievement, Language } from './types';
 import { Plus } from 'lucide-react';
 import { getCurrentWeekNumber } from './utils';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
@@ -28,7 +28,11 @@ const defaultNotes: NoteCard[] = [];
 // **已修改：获取初始周数 - 自动定位到当前实际周数**
 const getInitialWeek = (): number => {
   // 获取当前的真实周数（支持2025年和2026年）
-  return getCurrentWeekNumber();
+  const now = new Date();
+  const wk = getCurrentWeekNumber();
+  // 体验优化：若仍在公历 2025 年的最后几天，但算入 2026 的第 1 周，则默认展示 2025 的 Week 52
+  if (now.getFullYear() === 2025 && wk === 1) return 52;
+  return wk;
 };
 
 // **获取初始月份索引 - 自动定位到当前月份**
@@ -104,6 +108,69 @@ const App: React.FC = () => {
   // 月度主题数据：key是monthIndex
   // ⚠️ 不从 localStorage 初始化，等待从 Supabase 加载（避免用户间数据串号）
   const [monthlyThemes, setMonthlyThemes] = useState<Record<number, string>>({});
+
+  // My 100 Achievements - 在 App 级别管理，确保跨页面可用
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [achievementsLoaded, setAchievementsLoaded] = useState(false);
+
+  // 加载 achievements（从 Supabase 或 localStorage）
+  useEffect(() => {
+    const loadAchievements = async () => {
+      if (achievementsLoaded) return;
+      
+      if (isSupabaseConfigured && user) {
+        try {
+          const { data, error } = await supabase
+            .from('annual_settings')
+            .select('achievements')
+            .eq('user_id', user.id)
+            .eq('year', 2026)
+            .single();
+          
+          if (!error && data?.achievements) {
+            setAchievements(data.achievements);
+          }
+        } catch (e) {
+          console.error('Failed to load achievements:', e);
+        }
+      } else if (typeof window !== 'undefined') {
+        // Fallback to localStorage
+        const saved = localStorage.getItem('annual-achievements-2026');
+        if (saved) {
+          try {
+            setAchievements(JSON.parse(saved));
+          } catch (e) {}
+        }
+      }
+      setAchievementsLoaded(true);
+    };
+    
+    if (user || isGuestMode) {
+      loadAchievements();
+    }
+  }, [user, isGuestMode, achievementsLoaded]);
+
+  // Handler: Add to My 100 from Dashboard challenges
+  const handleAddToMy100 = useCallback(async (content: string, date: string) => {
+    const newAchievement: Achievement = {
+      id: Date.now().toString() + Math.random(),
+      date,
+      content,
+      linkedTodoId: null,
+    };
+    
+    const updatedAchievements = [...achievements, newAchievement];
+    setAchievements(updatedAchievements);
+    
+    // 保存到 localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('annual-achievements-2026', JSON.stringify(updatedAchievements));
+    }
+    
+    // 云端同步由 AnnualSettings 组件统一处理，避免并发写入冲突
+    
+    toast.success(language === 'en' ? `✨ Added to My 100!` : `✨ 已添加到 My 100！`);
+  }, [achievements, user, language, toast]);
 
   // Supabase auth boot (逻辑保持不变)
   useEffect(() => {
@@ -181,14 +248,18 @@ const App: React.FC = () => {
 
     try {
       // 创建所有月份的记录（包括空数组）
-      const rows = Object.keys({...goalsData, ...themesData}).map(monthIndex => ({
-        id: `${userId}-${monthIndex}-2026`,
-        user_id: userId,
-        month_index: parseInt(monthIndex),
-        year: 2026,
-        goals: Array.isArray(goalsData[parseInt(monthIndex)]) ? goalsData[parseInt(monthIndex)] : [],
-        theme: themesData[parseInt(monthIndex)] || null,
-      }));
+      const rows = Object.keys({ ...goalsData, ...themesData }).map(monthIndex => {
+        const idx = parseInt(monthIndex);
+        const rowYear = idx === 0 ? 2025 : 2026;
+        return {
+          id: `${userId}-${monthIndex}-2026`,
+          user_id: userId,
+          month_index: idx,
+          year: rowYear,
+          goals: Array.isArray(goalsData[idx]) ? goalsData[idx] : [],
+          theme: themesData[idx] || null,
+        };
+      });
 
       if (rows.length > 0) {
         const { error } = await supabase.from('monthly_goals').upsert(rows, {
@@ -220,7 +291,7 @@ const App: React.FC = () => {
           .from('monthly_goals')
           .select('*')
           .eq('user_id', user.id)
-          .eq('year', 2026)
+          .in('year', [2025, 2026])
           .order('month_index', { ascending: true });
 
         if (error) throw error;
@@ -505,9 +576,9 @@ const handleSaveNote = async (note: NoteCard) => {
   const renderContent = () => {
     switch (activeView) {
       case 'dashboard':
-        return <Dashboard weekNumber={currentWeek} setWeekNumber={setCurrentWeek} user={user} language={language} />;
+        return <Dashboard weekNumber={currentWeek} setWeekNumber={setCurrentWeek} user={user} language={language} onAddToMy100={handleAddToMy100} />;
       case 'annual':
-        return <AnnualSettings user={user} language={language} motto={motto} onMottoChange={setMotto} />;
+        return <AnnualSettings user={user} language={language} motto={motto} onMottoChange={setMotto} achievements={achievements} onAchievementsChange={setAchievements} />;
       case 'monthly':
         return (
           <MonthlyNotebook
@@ -532,7 +603,7 @@ const handleSaveNote = async (note: NoteCard) => {
       case 'privacy':
         return <PrivacyPolicy language={language} onBack={() => setActiveView('dashboard')} />;
       default:
-        return <Dashboard weekNumber={currentWeek} setWeekNumber={setCurrentWeek} language={language} />;
+        return <Dashboard weekNumber={currentWeek} setWeekNumber={setCurrentWeek} language={language} onAddToMy100={handleAddToMy100} />;
     }
   };
 

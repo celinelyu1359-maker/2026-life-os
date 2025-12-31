@@ -83,6 +83,7 @@ interface DashboardProps {
     setWeekNumber: (n: number) => void;
     user?: any; // Supabase user object
     language?: Language;
+    onAddToMy100?: (content: string, date: string) => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ 
@@ -90,6 +91,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     setWeekNumber,
     user,
     language = 'en',
+    onAddToMy100,
 }) => {
     // =======================================================
     // ✅ 3. 内部状态定义
@@ -140,15 +142,18 @@ const Dashboard: React.FC<DashboardProps> = ({
         if (!isSupabaseConfigured) return;
 
         try {
-            const rows = weeksData.map(week => ({
-                id: `${userId}-${week.weekNum}-2026`,
-                user_id: userId,
-                week_num: week.weekNum,
-                year: 2026,
-                scoreboard: week.scoreboard,
-                challenges: week.challenges,
-                happy_hours: week.happyHours,
-            }));
+            const rows = weeksData.map(week => {
+                const rowYear = week.weekNum === 52 ? 2025 : 2026;
+                return {
+                    id: `${userId}-${week.weekNum}-2026`,
+                    user_id: userId,
+                    week_num: week.weekNum,
+                    year: rowYear,
+                    scoreboard: week.scoreboard,
+                    challenges: week.challenges,
+                    happy_hours: week.happyHours,
+                };
+            });
 
             const { error } = await supabase.from('dashboard_data').upsert(rows, {
                 onConflict: 'id',
@@ -172,7 +177,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         .from('dashboard_data')
                         .select('*')
                         .eq('user_id', user.id)
-                        .eq('year', 2026)
+                        .in('year', [2025, 2026])
                         .order('week_num', { ascending: true });
 
                     if (error) throw error;
@@ -1062,6 +1067,17 @@ const Dashboard: React.FC<DashboardProps> = ({
                                                 <span className={`text-sm leading-snug cursor-text flex-1 ${c.completed ? 'line-through text-slate-300' : 'text-slate-700'}`}>{c.text}</span>
                                             </div>
                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                                                {onAddToMy100 && c.completed && (
+                                                    <button 
+                                                        onClick={() => {
+                                                            onAddToMy100(c.text, new Date().toISOString().split('T')[0]);
+                                                        }} 
+                                                        className="p-1 text-slate-400 hover:text-amber-500 rounded-md transition-colors" 
+                                                        title={language === 'en' ? 'Add to My 100' : '添加到 My 100'}
+                                                    >
+                                                        <Sparkles size={12}/>
+                                                    </button>
+                                                )}
                                                 <button onClick={() => onDeferChallenge(c.id)} className="p-1 text-slate-400 hover:text-blue-500 rounded-md transition-colors" title={language === 'en' ? 'Defer to next week' : '推迟到下周'}><CalendarClock size={12}/></button>
                                                 <button onClick={() => onDeleteChallenge(c.id)} className="p-1 text-slate-400 hover:text-red-500 rounded-md transition-colors" title={language === 'en' ? 'Delete' : '删除'}><Trash2 size={12}/></button>
                                             </div>

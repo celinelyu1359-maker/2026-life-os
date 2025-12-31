@@ -22,15 +22,27 @@ interface AnnualSettingsProps {
   language?: Language;
   motto?: string;
   onMottoChange?: (newMotto: string) => void;
+  achievements?: Achievement[];
+  onAchievementsChange?: (achievements: Achievement[]) => void;
 }
 
-const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', motto = 'Responsibility & Nutrition', onMottoChange }) => {
+const AnnualSettings: React.FC<AnnualSettingsProps> = ({ 
+  user, 
+  language = 'en', 
+  motto = 'Responsibility & Nutrition', 
+  onMottoChange,
+  achievements: propAchievements,
+  onAchievementsChange
+}) => {
   console.log("🔥 AnnualSettings FILE IS LOADED 🔥");
 
   // 1️⃣ 状态初始化：先只用默认值，避免服务端/客户端不一致报错
   const [dimensions, setDimensions] = useState<Dimension[]>(defaultDimensions);
   const [todos, setTodos] = useState<ToDoItem[]>(defaultTodos);
-  const [achievements, setAchievements] = useState<Achievement[]>(defaultAchievements);
+  // achievements: 使用 props 传入的，如果没有则用本地 state
+  const [localAchievements, setLocalAchievements] = useState<Achievement[]>(defaultAchievements);
+  const achievements = propAchievements ?? localAchievements;
+  const setAchievements = onAchievementsChange ?? setLocalAchievements;
   
   // 2️⃣ 安全锁：标记数据是否已经从本地加载完毕
   const [isLoaded, setIsLoaded] = useState(false);
@@ -72,28 +84,47 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({ user, language = 'en', 
     if (!isSupabaseConfigured) return;
 
     try {
-      // Prepare data object
-      const dataToSync: any = {
-        id: `${userId}-2026`,
+      // 先查询是否已有记录，获取真实的id
+      const { data: existing, error: queryError } = await supabase
+        .from('annual_settings')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('year', 2026)
+        .maybeSingle();
+
+      if (queryError) throw queryError;
+
+      const payload: any = {
         user_id: userId,
         year: 2026,
         dimensions: dims,
         todos: todosData,
         achievements: achievementsData,
+        updated_at: new Date().toISOString(),
       };
 
-      // Only include motto if it exists (backward compatible with databases that don't have the column)
       if (mottoText) {
-        dataToSync.motto = mottoText;
+        payload.motto = mottoText;
       }
 
-      const { error } = await supabase.from('annual_settings').upsert(dataToSync, {
-        onConflict: 'id',
-      });
-
-      if (error) throw error;
-    } catch (e) {
-      console.error('Failed to sync annual settings to cloud', e);
+      if (existing) {
+        // 已存在：使用现有id进行更新
+        const { error } = await supabase
+          .from('annual_settings')
+          .update(payload)
+          .eq('id', existing.id);
+        if (error) throw error;
+      } else {
+        // 不存在：插入新记录
+        payload.id = `annual-${userId}-2026`;
+        const { error } = await supabase
+          .from('annual_settings')
+          .insert(payload);
+        if (error) throw error;
+      }
+    } catch (e: any) {
+      const msg = e?.message || e;
+      console.error('Failed to sync annual settings to cloud', msg);
     }
   }, []);
 

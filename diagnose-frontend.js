@@ -45,16 +45,18 @@
     });
     
     // 4. 查询 monthly_goals（应该只返回当前用户的数据）
-    console.log('\n📊 Monthly Goals Query (should only show YOUR data):');
+    console.log('\n📊 Monthly Goals Query (should only show YOUR data, 2025+2026):');
     const { data: goalsData, error: goalsError } = await supabase
       .from('monthly_goals')
       .select('*')
-      .eq('year', 2026);
+      .in('year', [2025, 2026]);
     
     if (goalsError) {
       console.error('  ❌ Query error:', goalsError);
     } else {
-      console.log(`  Total records: ${goalsData.length}`);
+      console.log(`  Total records (2025+2026): ${goalsData.length}`);
+      const byYearGoals = goalsData.reduce((acc, r) => { acc[r.year] = (acc[r.year]||0)+1; return acc; }, {});
+      console.log('  By year:', byYearGoals);
       
       // 统计 user_id
       const userIds = [...new Set(goalsData.map(row => row.user_id))];
@@ -81,16 +83,18 @@
     }
     
     // 5. 查询 dashboard_data
-    console.log('\n📈 Dashboard Data Query (should only show YOUR data):');
+    console.log('\n📈 Dashboard Data Query (should only show YOUR data, 2025+2026):');
     const { data: dashboardData, error: dashError } = await supabase
       .from('dashboard_data')
       .select('*')
-      .eq('year', 2026);
+      .in('year', [2025, 2026]);
     
     if (dashError) {
       console.error('  ❌ Query error:', dashError);
     } else {
-      console.log(`  Total records: ${dashboardData.length}`);
+      console.log(`  Total records (2025+2026): ${dashboardData.length}`);
+      const byYearDash = dashboardData.reduce((acc, r) => { acc[r.year] = (acc[r.year]||0)+1; return acc; }, {});
+      console.log('  By year:', byYearDash);
       const userIds = [...new Set(dashboardData.map(row => row.user_id))];
       console.log(`  Unique user_ids: ${userIds.length}`);
       
