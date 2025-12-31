@@ -864,6 +864,9 @@ const AnnualSettings: React.FC<AnnualSettingsProps> = ({
 
         </div>
 
+        {/* Divider */}
+        <div className="border-t border-slate-200 my-8"></div>
+
         {/* My 100 Achievements Section */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-3">
