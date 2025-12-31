@@ -28,10 +28,7 @@ const defaultNotes: NoteCard[] = [];
 // **已修改：获取初始周数 - 自动定位到当前实际周数**
 const getInitialWeek = (): number => {
   // 获取当前的真实周数（支持2025年和2026年）
-  const now = new Date();
   const wk = getCurrentWeekNumber();
-  // 体验优化：若仍在公历 2025 年的最后几天，但算入 2026 的第 1 周，则默认展示 2025 的 Week 52
-  if (now.getFullYear() === 2025 && wk === 1) return 52;
   return wk;
 };
 
