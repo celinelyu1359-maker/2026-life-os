@@ -780,10 +780,11 @@ const NoteModal: React.FC<{
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
       <div
-        className="bg-[#F6F4EB] w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-300 relative overflow-hidden"
+        className="bg-[#F6F4EB] w-full max-w-lg shadow-2xl animate-in fade-in zoom-in duration-300 relative overflow-hidden flex flex-col"
         style={{
           borderRadius: '2px',
-          minHeight: '600px',
+          height: '85vh',
+          maxHeight: '700px',
           boxShadow: '0 20px 50px -12px rgba(0, 0, 0, 0.25)'
         }}
       >
@@ -815,11 +816,11 @@ const NoteModal: React.FC<{
           <div className="w-full h-px bg-slate-800"></div>
         </div>
 
-        <div className="px-10 pb-10 flex flex-col h-full font-typewriter">
+        <div className="px-10 pb-10 flex flex-col flex-1 font-typewriter overflow-hidden">
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="w-full bg-transparent text-slate-900 font-bold text-lg mb-6 outline-none placeholder:text-slate-400"
+            className="w-full bg-transparent text-slate-900 font-bold text-lg mb-6 outline-none placeholder:text-slate-400 flex-shrink-0"
             placeholder="Title..."
             autoFocus
           />
@@ -827,7 +828,7 @@ const NoteModal: React.FC<{
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            className="w-full flex-1 bg-transparent text-slate-800 text-sm leading-relaxed resize-none outline-none placeholder:text-slate-400 h-64"
+            className="w-full flex-1 bg-transparent text-slate-800 text-sm leading-relaxed resize-none outline-none placeholder:text-slate-400 min-h-0"
             placeholder={language === 'en' ? 'old memory of new time ....' : '写下你的想法....'}
             spellCheck={false}
           ></textarea>
